@@ -1,31 +1,50 @@
-# ScreenStudy
+# React + TypeScript + Vite
 
-ScreenStudy is an open source tool for capturing your weekly work and turning it into polished UX Engineering case study articles — automatically.
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
-## What It Does
+Currently, two official plugins are available:
 
-Upload or scan a collection of media — screenshots, videos, and speech-to-text recordings — and an AI agent analyzes, organizes, and drafts a case study article from your content. The goal is a low-maintenance, repeatable workflow for documenting and publishing your design and engineering work.
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
 
-## Core Features (Planned)
+## Expanding the ESLint configuration
 
-- **Media ingestion** — upload screenshots, screen recordings, and audio/video files
-- **AI-powered analysis** — an agent reviews your media and extracts key insights, decisions, and outcomes
-- **Auto-organization** — media is categorized and structured around a case study narrative
-- **Article generation** — produces a draft UX Engineering case study ready for review and publishing
-- **Automated publishing** — push finished articles to a blog or static site with minimal manual effort
+If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
 
-## Motivation
+- Configure the top-level `parserOptions` property like this:
 
-Keeping a consistent record of your work is valuable but time-consuming. ScreenStudy removes that friction by letting you capture raw artifacts throughout the week and handling the write-up automatically — so you can stay focused on the work itself.
+```js
+export default tseslint.config({
+  languageOptions: {
+    // other options...
+    parserOptions: {
+      project: ['./tsconfig.node.json', './tsconfig.app.json'],
+      tsconfigRootDir: import.meta.dirname,
+    },
+  },
+})
+```
 
-## Status
+- Replace `tseslint.configs.recommended` to `tseslint.configs.recommendedTypeChecked` or `tseslint.configs.strictTypeChecked`
+- Optionally add `...tseslint.configs.stylisticTypeChecked`
+- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and update the config:
 
-Early-stage / work in progress. The tech stack and publishing platform have not yet been decided.
+```js
+// eslint.config.js
+import react from 'eslint-plugin-react'
 
-## Contributing
-
-Contributions, ideas, and feedback are welcome. Open an issue to start a conversation.
-
-## License
-
-MIT
+export default tseslint.config({
+  // Set the react version
+  settings: { react: { version: '18.3' } },
+  plugins: {
+    // Add the react plugin
+    react,
+  },
+  rules: {
+    // other rules...
+    // Enable its recommended rules
+    ...react.configs.recommended.rules,
+    ...react.configs['jsx-runtime'].rules,
+  },
+})
+```
