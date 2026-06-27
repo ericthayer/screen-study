@@ -846,7 +846,7 @@ function App() {
               type="text"
               value={draft.title}
               onChange={(event) => updateDraft({ title: event.target.value })}
-              placeholder="What happened?"
+              placeholder="What happened?…"
               autoComplete="off"
             />
           </label>
@@ -856,8 +856,9 @@ function App() {
             <textarea
               value={draft.details}
               onChange={(event) => updateDraft({ details: event.target.value })}
-              placeholder="Add context, outcomes, links, or next steps."
+              placeholder="Add context, outcomes, links, or next steps…"
               rows={4}
+              spellCheck={false}
             />
           </label>
 
@@ -886,7 +887,7 @@ function App() {
         <h2>Weekly queue</h2>
         {groupedEntries.length === 0 ? (
           <div className="empty-state">
-            <p>No captures yet. Add your first item above.</p>
+            <p>No captures yet. Add your first item above…</p>
           </div>
         ) : (
           groupedEntries.map((group) => (
@@ -1024,9 +1025,11 @@ function App() {
             <span>GitHub owner</span>
             <input
               type="text"
+              name="owner"
               value={publishConfig.owner}
               onChange={(event) => updatePublishConfig({ owner: event.target.value })}
               placeholder="org-or-user"
+              autoComplete="off"
             />
           </label>
 
@@ -1034,9 +1037,11 @@ function App() {
             <span>Repository</span>
             <input
               type="text"
+              name="repo"
               value={publishConfig.repo}
               onChange={(event) => updatePublishConfig({ repo: event.target.value })}
               placeholder="content-repo"
+              autoComplete="off"
             />
           </label>
 
@@ -1074,6 +1079,7 @@ function App() {
             <span>Author name</span>
             <input
               type="text"
+              name="authorName"
               value={publishConfig.authorName}
               onChange={(event) => updatePublishConfig({ authorName: event.target.value })}
             />
@@ -1083,6 +1089,7 @@ function App() {
             <span>Author email</span>
             <input
               type="email"
+              name="authorEmail"
               value={publishConfig.authorEmail}
               onChange={(event) => updatePublishConfig({ authorEmail: event.target.value })}
             />
@@ -1092,6 +1099,7 @@ function App() {
             <span>GitHub token</span>
             <input
               type="password"
+              name="githubToken"
               value={publishConfig.githubToken}
               onChange={(event) => setPublishConfig((current) => ({ ...current, githubToken: event.target.value }))}
               placeholder="ghp_..."
@@ -1127,7 +1135,7 @@ function App() {
         ) : null}
 
         {publishResult.steps.length > 0 ? (
-          <ul className="result-list">
+          <ul className="result-list" aria-live="polite">
             {publishResult.steps.map((step) => (
               <li key={step}>{step}</li>
             ))}

@@ -1,7 +1,7 @@
 .page {
   margin: 0 auto;
   max-width: 760px;
-  padding: 1rem 1rem 3rem;
+  padding: env(safe-area-inset-top, 1rem) env(safe-area-inset-right, 1rem) calc(env(safe-area-inset-bottom, 3rem) + 3rem) env(safe-area-inset-left, 1rem);
 }
 
 .hero {
@@ -21,11 +21,13 @@ h1 {
   font-size: 1.8rem;
   line-height: 1.2;
   margin: 0;
+  text-wrap: balance;
 }
 
 h2 {
   font-size: 1.15rem;
   margin: 0 0 0.75rem;
+  text-wrap: balance;
 }
 
 h3 {
@@ -70,8 +72,7 @@ select {
   color: #1c1e24;
   font: inherit;
   min-height: 2.75rem;
-  padding: 0.7rem 0.85rem;
-  width: 100%;
+  padding: 0.25rem 0.55rem;
 }
 
 textarea {
@@ -79,9 +80,9 @@ textarea {
   resize: vertical;
 }
 
-input:focus,
-textarea:focus,
-select:focus {
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
   border-color: #5e5fdb;
   box-shadow: 0 0 0 3px #5e5fdb22;
   outline: none;
@@ -118,7 +119,7 @@ select:focus {
 }
 
 .secondary-button:hover {
-  background: #f5f7ff;
+  background: #e4e7f3;
 }
 
 .inline-error {
@@ -202,13 +203,13 @@ select:focus {
 .ghost-button {
   background: transparent;
   border: 0;
-  color: #7a2e2e;
+  color: #c94040;
   min-height: 2rem;
   padding: 0.2rem 0.4rem;
 }
 
 .ghost-button:hover {
-  color: #571b1b;
+  color: #9c2e2e;
 }
 
 .review-gate {
@@ -250,6 +251,7 @@ select:focus {
   color: #2f3445;
   margin: 0.75rem 0 0;
   padding-left: 1rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .pr-link {
@@ -273,6 +275,7 @@ select:focus {
   overflow: auto;
   padding: 0.75rem;
   white-space: pre-wrap;
+  word-break: break-word;
 }
 
 @media (min-width: 700px) {
