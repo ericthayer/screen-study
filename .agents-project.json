@@ -1,0 +1,31 @@
+{
+  "$schema": "https://raw.githubusercontent.com/ericthayer/agents-config/main/schemas/agents-project.schema.json",
+  "version": "1.1.0",
+  "project": {
+    "name": "screen-study",
+    "framework": "react",
+    "styling": "vanilla",
+    "database": "none"
+  },
+  "agents": [
+    "copilot",
+    "gemini"
+  ],
+  "features": {
+    "gemini": true,
+    "storybook": false,
+    "threejs": false,
+    "github": true
+  },
+  "rules": {
+    "include": [
+      "accessibility",
+      "component-architecture",
+      "spec-driven-development",
+      "web-performance",
+      "gemini"
+    ],
+    "exclude": []
+  },
+  "overrides": {}
+}
