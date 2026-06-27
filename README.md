@@ -1,50 +1,74 @@
-# React + TypeScript + Vite
+# ScreenStudy
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+ScreenStudy helps you convert weekly work artifacts into review-ready UX engineering case study drafts, then publish those drafts through a controlled GitHub PR workflow.
 
-Currently, two official plugins are available:
+## Current MVP
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+The current implementation is a practical capture-to-publish flow:
 
-## Expanding the ESLint configuration
+1. Quick capture inbox for weekly evidence entries.
+2. Weekly queue grouping and review.
+3. Portfolio Signal draft generation (`problem`, `decisions`, `outcomes`, `impact`).
+4. Low-confidence markers to highlight weak evidence.
+5. Mandatory human approval gate before publish.
+6. Markdown export with frontmatter.
+7. Optional GitHub branch + commit + pull request creation.
 
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
+## Why This Exists
 
-- Configure the top-level `parserOptions` property like this:
+Documenting work consistently is high-value but time-consuming. ScreenStudy reduces documentation overhead by turning small, frequent captures into a structured publishing artifact.
 
-```js
-export default tseslint.config({
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
-```
+## Planned Direction
 
-- Replace `tseslint.configs.recommended` to `tseslint.configs.recommendedTypeChecked` or `tseslint.configs.strictTypeChecked`
-- Optionally add `...tseslint.configs.stylisticTypeChecked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and update the config:
+The longer-term direction includes richer media ingestion and AI-assisted narrative extraction. See implementation docs for details.
 
-```js
-// eslint.config.js
-import react from 'eslint-plugin-react'
+## Quick Start
 
-export default tseslint.config({
-  // Set the react version
-  settings: { react: { version: '18.3' } },
-  plugins: {
-    // Add the react plugin
-    react,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended rules
-    ...react.configs.recommended.rules,
-    ...react.configs['jsx-runtime'].rules,
-  },
-})
-```
+1. Install dependencies:
+   - `npm install`
+2. Use supported Node version:
+   - `nvm use 24`
+3. Start development server:
+   - `npm run dev`
+
+## Scripts
+
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Start local dev server |
+| `npm run typecheck` | Run TypeScript checks |
+| `npm run lint` | Run ESLint |
+| `npm run build` | Build for production |
+| `npm run preview` | Preview production build |
+
+## Architecture Snapshot
+
+- Framework: React 19 + TypeScript + Vite 8
+- Styling: vanilla CSS
+- Main app flow currently lives in `src/App.tsx`
+- Persistence via browser localStorage with schema versioning
+
+## Documentation
+
+- Implementation handoff: [docs/implementation-handoff.md](docs/implementation-handoff.md)
+- Day-by-day execution docs: [docs](docs)
+- Architecture decision records: [docs/decisions](docs/decisions)
+- Visual project overview (HTML): [docs/project-overview.html](docs/project-overview.html)
+
+## AI Agent Customization
+
+This repo uses `agents-config` and keeps shared customization in `.agents/`.
+
+Start with:
+
+1. [.agents/AGENTS.md](.agents/AGENTS.md)
+2. [.agents/PROJECT-CONTEXT.md](.agents/PROJECT-CONTEXT.md)
+3. [.github/copilot-instructions.md](.github/copilot-instructions.md)
+
+## Contributing
+
+Issues and PRs are welcome. Please include reproduction steps and expected behavior for bug reports.
+
+## License
+
+MIT

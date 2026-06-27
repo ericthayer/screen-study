@@ -1,0 +1,6 @@
+session_id,persona_fit,completed_end_to_end,completion_time_min,highest_dropoff_step,top_friction_1,top_friction_2,top_friction_3,notes
+1,high,yes,24,draft,low confidence flags unclear,approval checkbox copy,markdown preview readability,completed with minor guidance
+2,high,yes,31,publish,github token setup confusion,branch naming expectation,dry run vs create pr distinction,completed after clarifying publish config
+3,medium,yes,28,organize,evidence grouping mental model,week selection ambiguity,delete action confidence,completed end-to-end
+4,high,yes,35,publish,base branch naming mismatch,repo owner format uncertainty,error message scanning,completed after retry with corrected config
+5,medium,no,33,publish,missing token scope,approval reset after edits,publish button disabled state discoverability,stopped at publish config stage

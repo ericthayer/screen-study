@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ScreenStudy Project Overview</title>
+    <style>
+      :root {
+        --bg: #f3f5fb;
+        --surface: #ffffff;
+        --text: #1c1e24;
+        --muted: #4e5466;
+        --accent: #3754c5;
+        --border: #d9deeb;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+        background: radial-gradient(circle at 10% 10%, #e8edff, var(--bg) 35%);
+        color: var(--text);
+        line-height: 1.5;
+      }
+
+      .wrap {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 2rem 1.25rem 3rem;
+      }
+
+      .hero {
+        background: linear-gradient(135deg, #dfe7ff, #ffffff 55%);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 1.5rem;
+      }
+
+      h1 {
+        margin: 0 0 0.5rem;
+        font-size: 2rem;
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 1.2rem;
+      }
+
+      p {
+        margin: 0.5rem 0 0;
+        color: var(--muted);
+      }
+
+      .grid {
+        display: grid;
+        gap: 1rem;
+        margin-top: 1rem;
+      }
+
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 1rem;
+      }
+
+      ul,
+      ol {
+        margin: 0.5rem 0 0;
+        padding-left: 1.25rem;
+      }
+
+      li + li {
+        margin-top: 0.3rem;
+      }
+
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        background: #eef2ff;
+        border-radius: 6px;
+        padding: 0.1rem 0.35rem;
+      }
+
+      a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+
+      a:hover {
+        text-decoration: underline;
+      }
+
+      .pill {
+        display: inline-block;
+        border: 1px solid #bac6ef;
+        border-radius: 999px;
+        padding: 0.2rem 0.65rem;
+        font-size: 0.85rem;
+        color: #2841a6;
+        background: #edf1ff;
+      }
+
+      @media (min-width: 820px) {
+        .grid.two {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <section class="hero">
+        <span class="pill">ScreenStudy</span>
+        <h1>Project Overview</h1>
+        <p>
+          ScreenStudy turns weekly work capture into a structured case-study draft and a review-gated
+          publishing flow.
+        </p>
+      </section>
+
+      <section class="grid two" aria-label="MVP summary and stack">
+        <article class="card">
+          <h2>Current MVP Flow</h2>
+          <ol>
+            <li>Capture weekly evidence quickly.</li>
+            <li>Group entries by week.</li>
+            <li>Generate a draft (problem, decisions, outcomes, impact).</li>
+            <li>Flag low-confidence evidence gaps.</li>
+            <li>Require explicit human review approval.</li>
+            <li>Export markdown and optionally create a GitHub PR.</li>
+          </ol>
+        </article>
+
+        <article class="card">
+          <h2>Stack</h2>
+          <ul>
+            <li>React 19</li>
+            <li>TypeScript</li>
+            <li>Vite 8</li>
+            <li>Vanilla CSS</li>
+          </ul>
+          <p><strong>Important:</strong> Use <code>nvm use 24</code> before local commands.</p>
+        </article>
+      </section>
+
+      <section class="grid two" aria-label="Commands and key docs">
+        <article class="card">
+          <h2>Key Commands</h2>
+          <ul>
+            <li><code>npm run dev</code></li>
+            <li><code>npm run typecheck</code></li>
+            <li><code>npm run lint</code></li>
+            <li><code>npm run build</code></li>
+          </ul>
+        </article>
+
+        <article class="card">
+          <h2>Where to Start</h2>
+          <ul>
+            <li><a href="../README.md">README.md</a></li>
+            <li><a href="implementation-handoff.md">docs/implementation-handoff.md</a></li>
+            <li><a href="decisions/ADR-001-agent-customization-foundation.md">ADR-001</a></li>
+            <li><a href="../.agents/AGENTS.md">.agents/AGENTS.md</a></li>
+            <li><a href="../.agents/PROJECT-CONTEXT.md">.agents/PROJECT-CONTEXT.md</a></li>
+          </ul>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>
