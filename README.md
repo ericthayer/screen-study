@@ -20,7 +20,20 @@ Keeping a consistent record of your work is valuable but time-consuming. ScreenS
 
 ## Status
 
-Early-stage / work in progress. The tech stack and publishing platform have not yet been decided.
+Early-stage / work in progress. The tech stack and publishing platform are pending decision — see [ADR-001](docs/adr/0001-frontend-architecture.md) and [ADR-010](docs/adr/0010-publishing-integration-model.md).
+
+## Documentation
+
+ScreenStudy uses a **spec-driven development (SDD)** approach: every feature starts from an approved spec, decisions are recorded as ADRs, and each change is traceable from spec → ADR → tasks → tests → release note.
+
+- [Docs hub & SDD framework](docs/README.md) — spec gate, traceability, delivery plan
+- [Specs](docs/specs/) — PRD, per-feature functional specs, non-functional requirements
+- [ADRs](docs/adr/) — architecture decision records (ADR-001 … ADR-010)
+- [Architecture](docs/architecture/) — system overview, frontend/backend architecture, data model, sequence diagrams
+- [Quality](docs/quality/) — accessibility (WCAG 2.2 AA), performance budgets, security threat model
+- [Operations](docs/operations/) — CI/CD flow, runbooks, incident response
+
+**Delivery plan:** Plan A — “MVP Monolith First” (Sprints 0–5), with modular boundary discipline so migration to a modular/service architecture stays low-risk. See [docs/README.md](docs/README.md) for the full plan and the Sprint 2 re-evaluation criteria.
 
 ## Contributing
 
