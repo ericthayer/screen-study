@@ -57,7 +57,9 @@ sequenceDiagram
         W->>DB: status=failed, event(analysis.failed, reason)
     end
     W->>DB: job(extract_insights) → insights rows
-    SPA->>DB: (via API) poll GET /jobs?media_id=…
+    SPA->>API: poll GET /jobs?media_id=…
+    API->>DB: fetch job rows (user-scoped)
+    API-->>SPA: job status list
     Note over SPA: status timeline updates; retry button on failed
 ```
 

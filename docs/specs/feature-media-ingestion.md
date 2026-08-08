@@ -13,7 +13,7 @@ Users upload screenshots, screen recordings, and audio/video notes through a web
 
 - US-ING-01: As a user, I can drag-and-drop or browse-select multiple files so I can capture a week's artifacts in one action.
 - US-ING-02: As a user, I see per-file progress and a clear success/failure state so I know what landed.
-- US-ING-03: As a user, I get immediate, plain-language validation errors (type too large/unsupported) so I can fix them.
+- US-ING-03: As a user, I get immediate, plain-language validation errors (file too large / unsupported type) so I can fix them.
 - US-ING-04: As a keyboard/screen-reader user, I can complete an upload without a mouse and hear status updates.
 - US-ING-05: As a user, I can add or accept suggested alt text for images (placeholder workflow in Sprint 1) so published content is accessible.
 
