@@ -20,7 +20,44 @@ Keeping a consistent record of your work is valuable but time-consuming. ScreenS
 
 ## Status
 
-Early-stage / work in progress. The tech stack and publishing platform have not yet been decided.
+Early-stage / work in progress. The core pipeline is implemented end to end: upload → analyze → organize → draft → publish. See [DECISIONS.md](./DECISIONS.md) for the chosen stack and architecture.
+
+## Getting Started
+
+Requires Node.js 20+.
+
+```bash
+npm install
+npm run dev        # API server on :3000
+npm run dev:web    # web client on :5173 (proxies API/media to :3000)
+```
+
+Production build:
+
+```bash
+npm run build
+npm start          # serves API + built web client on :3000
+```
+
+### AI providers
+
+The app works out of the box with the offline `local` provider (placeholder insights + template articles). For real AI analysis, set one of:
+
+```bash
+export ANTHROPIC_API_KEY=...   # vision analysis + article generation
+export OPENAI_API_KEY=...      # vision analysis + Whisper transcription + article generation
+export AI_PROVIDER=anthropic   # optional; auto-detected from keys
+```
+
+### Development
+
+```bash
+npm test           # Vitest (unit + API pipeline tests)
+npm run lint
+npm run typecheck
+```
+
+Data (SQLite DB, uploaded media, published articles) lives in `./data` by default; override with `DATA_DIR`, `MEDIA_DIR`, and `PUBLISH_DIR`.
 
 ## Contributing
 
