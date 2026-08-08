@@ -63,9 +63,13 @@ export function registerAnalysisRoutes(app: FastifyInstance, ctx: AppContext): v
     return reply.status(202).send({ jobs });
   });
 
-  app.get('/api/analysis/jobs', async () => {
-    return { jobs: ctx.db.listAnalysisJobs() };
-  });
+  app.get(
+    '/api/analysis/jobs',
+    { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
+    async () => {
+      return { jobs: ctx.db.listAnalysisJobs() };
+    },
+  );
 
   // Human review/edit of an insight.
   app.put<{

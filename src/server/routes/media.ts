@@ -32,7 +32,10 @@ function kindFor(filename: string, mimeType: string): MediaKind | null {
 }
 
 export function registerMediaRoutes(app: FastifyInstance, ctx: AppContext): void {
-  app.post('/api/media', async (request, reply) => {
+  // Stricter limits for expensive I/O routes (uploads and file deletes).
+  const ioRateLimit = { rateLimit: { max: 60, timeWindow: '1 minute' } };
+
+  app.post('/api/media', { config: ioRateLimit }, async (request, reply) => {
     // Two passes: stream file parts to disk first, then apply field metadata.
     // Form fields may arrive after file parts (standard browser FormData order),
     // so fields cannot be consumed in the same pass as the files.
@@ -98,11 +101,15 @@ export function registerMediaRoutes(app: FastifyInstance, ctx: AppContext): void
     },
   );
 
-  app.delete<{ Params: { id: string } }>('/api/media/:id', async (request, reply) => {
-    const item = ctx.db.deleteMediaItem(request.params.id);
-    if (!item) return reply.status(404).send({ error: 'Not found' });
-    const file = path.join(ctx.config.mediaDir, item.filename);
-    if (fs.existsSync(file)) fs.unlinkSync(file);
-    return reply.status(204).send();
-  });
+  app.delete<{ Params: { id: string } }>(
+    '/api/media/:id',
+    { config: ioRateLimit },
+    async (request, reply) => {
+      const item = ctx.db.deleteMediaItem(request.params.id);
+      if (!item) return reply.status(404).send({ error: 'Not found' });
+      const file = path.join(ctx.config.mediaDir, item.filename);
+      if (fs.existsSync(file)) fs.unlinkSync(file);
+      return reply.status(204).send();
+    },
+  );
 }

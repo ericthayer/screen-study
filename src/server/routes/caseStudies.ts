@@ -13,9 +13,13 @@ export function registerCaseStudyRoutes(app: FastifyInstance, ctx: AppContext): 
     },
   );
 
-  app.get('/api/case-studies', async () => {
-    return { caseStudies: ctx.db.listCaseStudies() };
-  });
+  app.get(
+    '/api/case-studies',
+    { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
+    async () => {
+      return { caseStudies: ctx.db.listCaseStudies() };
+    },
+  );
 
   app.get<{ Params: { id: string } }>('/api/case-studies/:id', async (request, reply) => {
     const study = ctx.db.getCaseStudy(request.params.id);
