@@ -82,9 +82,13 @@ export function registerMediaRoutes(app: FastifyInstance, ctx: AppContext): void
     return reply.status(201).send({ items: uploaded });
   });
 
-  app.get('/api/media', async () => {
-    return { items: ctx.db.listMediaItems() };
-  });
+  app.get(
+    '/api/media',
+    { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
+    async () => {
+      return { items: ctx.db.listMediaItems() };
+    },
+  );
 
   app.get<{ Params: { id: string } }>('/api/media/:id', async (request, reply) => {
     const item = ctx.db.getMediaItem(request.params.id);
