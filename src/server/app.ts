@@ -2,6 +2,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import Fastify, { type FastifyInstance } from 'fastify';
 import multipart from '@fastify/multipart';
+import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
 import { ensureDataDirs, loadConfig, type AppConfig } from './config.js';
 import { ScreenStudyDb } from './db.js';
@@ -30,6 +31,12 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
 
   await app.register(multipart, {
     limits: { fileSize: config.maxUploadBytes, files: 20 },
+  });
+
+  // Basic abuse protection for API routes (single-user local tool, generous limits).
+  await app.register(rateLimit, {
+    max: Number(process.env.RATE_LIMIT_MAX ?? 200),
+    timeWindow: '1 minute',
   });
 
   // Serve uploaded media.

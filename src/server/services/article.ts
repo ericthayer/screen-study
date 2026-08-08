@@ -59,7 +59,7 @@ export function withFrontmatter(
   fields: { title: string; date: string; draft: boolean },
 ): string {
   if (markdown.startsWith('---')) return markdown;
-  const escapedTitle = fields.title.replace(/"/g, '\\"');
+  const escapedTitle = fields.title.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
   return [
     '---',
     `title: "${escapedTitle}"`,
