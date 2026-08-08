@@ -102,8 +102,8 @@ export function DraftsPage({ caseStudyId }: Props) {
             <button className="primary" onClick={() => void save()}>
               Save as new version
             </button>
-            <a href={`/api/drafts/${active.id}/export`} download>
-              <button>Export Markdown</button>
+            <a href={`/api/drafts/${active.id}/export`} download className="button-link">
+              Export Markdown
             </a>
             <button onClick={() => void publish()}>Publish</button>
             {latestPublish && (

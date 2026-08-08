@@ -33,7 +33,16 @@ function kindFor(filename: string, mimeType: string): MediaKind | null {
 
 export function registerMediaRoutes(app: FastifyInstance, ctx: AppContext): void {
   app.post('/api/media', async (request, reply) => {
-    const uploaded: unknown[] = [];
+    // Two passes: stream file parts to disk first, then apply field metadata.
+    // Form fields may arrive after file parts (standard browser FormData order),
+    // so fields cannot be consumed in the same pass as the files.
+    interface PendingFile {
+      filename: string;
+      originalName: string;
+      mimeType: string;
+      kind: MediaKind;
+    }
+    const pending: PendingFile[] = [];
     const fields: Record<string, string> = {};
     for await (const part of request.parts()) {
       if (part.type === 'file') {
@@ -50,24 +59,23 @@ export function registerMediaRoutes(app: FastifyInstance, ctx: AppContext): void
           fs.unlinkSync(dest);
           return reply.status(413).send({ error: 'File exceeds maximum upload size.' });
         }
-        const stats = fs.statSync(dest);
-        const item = ctx.db.createMediaItem({
-          filename,
-          originalName: part.filename,
-          mimeType: part.mimetype,
-          kind,
-          sizeBytes: stats.size,
-          capturedAt: fields.capturedAt ?? null,
-          source: fields.source ?? null,
-        });
-        uploaded.push(item);
+        pending.push({ filename, originalName: part.filename, mimeType: part.mimetype, kind });
       } else if (part.type === 'field') {
         fields[part.fieldname] = String(part.value);
       }
     }
-    if (uploaded.length === 0) {
+    if (pending.length === 0) {
       return reply.status(400).send({ error: 'No files provided.' });
     }
+    const uploaded = pending.map((file) => {
+      const stats = fs.statSync(path.join(ctx.config.mediaDir, file.filename));
+      return ctx.db.createMediaItem({
+        ...file,
+        sizeBytes: stats.size,
+        capturedAt: fields.capturedAt ?? null,
+        source: fields.source ?? null,
+      });
+    });
     return reply.status(201).send({ items: uploaded });
   });
 

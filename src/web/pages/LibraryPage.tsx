@@ -86,7 +86,15 @@ export function LibraryPage() {
       </div>
 
       <div className="toolbar">
-        <button className="primary" onClick={() => void api.analyzeAll().then(refresh)}>
+        <button
+          className="primary"
+          onClick={() =>
+            void api
+              .analyzeAll()
+              .then(refresh)
+              .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
+          }
+        >
           Analyze all unanalyzed
         </button>
         <span className="muted">{items.length} item(s)</span>

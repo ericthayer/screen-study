@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { MediaWithInsight } from '../../shared/types';
 import { api } from '../api';
 
@@ -17,6 +17,11 @@ export function InsightEditor({ media, onClose, onSaved }: Props) {
   const [outcomes, setOutcomes] = useState((insight?.outcomes ?? []).join('\n'));
   const [transcript, setTranscript] = useState(insight?.transcript ?? '');
   const [error, setError] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    dialogRef.current?.focus();
+  }, []);
 
   const save = async () => {
     setError(null);
@@ -35,8 +40,19 @@ export function InsightEditor({ media, onClose, onSaved }: Props) {
   };
 
   return (
-    <div className="panel" style={{ position: 'fixed', inset: '10% 15%', overflow: 'auto', zIndex: 10 }}>
-      <h3>
+    <div
+      ref={dialogRef}
+      className="panel"
+      style={{ position: 'fixed', inset: '10% 15%', overflow: 'auto', zIndex: 10 }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="insight-editor-title"
+      tabIndex={-1}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') onClose();
+      }}
+    >
+      <h3 id="insight-editor-title">
         Review insight — {media.originalName}{' '}
         {insight && (
           <span className="muted" style={{ fontSize: '0.8rem' }}>

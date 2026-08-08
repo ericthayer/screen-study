@@ -71,6 +71,20 @@ button.primary {
   font-weight: 600;
 }
 
+.button-link {
+  display: inline-block;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.9rem;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.button-link:hover {
+  border-color: var(--accent);
+}
+
 button.danger {
   border-color: var(--danger);
   color: var(--danger);
