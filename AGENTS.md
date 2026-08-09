@@ -23,7 +23,7 @@ npm run build       # tsc -p tsconfig.build.json && vite build
 npm start           # serve API + built web client on :3000
 ```
 
-**Before committing, always run:** `npm run lint`, `npm run typecheck`, `npm test`. CI (`.github/workflows/ci.yml`) runs all four gates plus `npm run build` on every PR — all must pass.
+**Before committing, always run:** `npm run lint`, `npm run typecheck`, `npm test`. CI (`.github/workflows/ci.yml`) runs those three gates plus `npm run build` on every PR — all four must pass.
 
 ## Repository Layout
 
