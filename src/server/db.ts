@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS media_items (
   mime_type TEXT NOT NULL,
   kind TEXT NOT NULL CHECK (kind IN ('image','video','audio')),
   size_bytes INTEGER NOT NULL,
+  content_hash TEXT,
   duration_seconds REAL,
   captured_at TEXT,
   source TEXT,
@@ -95,13 +96,30 @@ CREATE TABLE IF NOT EXISTS publish_records (
 
 CREATE TABLE IF NOT EXISTS analysis_jobs (
   id TEXT PRIMARY KEY,
-  media_id TEXT NOT NULL REFERENCES media_items(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL DEFAULT 'analysis' CHECK (kind IN ('analysis','draft')),
+  media_id TEXT REFERENCES media_items(id) ON DELETE CASCADE,
+  case_study_id TEXT REFERENCES case_studies(id) ON DELETE CASCADE,
+  draft_id TEXT,
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','running','done','failed')),
+  attempts INTEGER NOT NULL DEFAULT 0,
+  max_attempts INTEGER NOT NULL DEFAULT 3,
+  run_at TEXT NOT NULL DEFAULT (datetime('now')),
   error TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 `;
+
+// Lightweight migrations for databases created before a column existed.
+const MIGRATIONS = [
+  `ALTER TABLE media_items ADD COLUMN content_hash TEXT`,
+  `ALTER TABLE analysis_jobs ADD COLUMN kind TEXT NOT NULL DEFAULT 'analysis'`,
+  `ALTER TABLE analysis_jobs ADD COLUMN case_study_id TEXT REFERENCES case_studies(id) ON DELETE CASCADE`,
+  `ALTER TABLE analysis_jobs ADD COLUMN draft_id TEXT`,
+  `ALTER TABLE analysis_jobs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE analysis_jobs ADD COLUMN max_attempts INTEGER NOT NULL DEFAULT 3`,
+  `ALTER TABLE analysis_jobs ADD COLUMN run_at TEXT NOT NULL DEFAULT (datetime('now'))`,
+];
 
 interface MediaRow {
   id: string;
@@ -110,6 +128,7 @@ interface MediaRow {
   mime_type: string;
   kind: MediaItem['kind'];
   size_bytes: number;
+  content_hash: string | null;
   duration_seconds: number | null;
   captured_at: string | null;
   source: string | null;
@@ -142,6 +161,7 @@ function rowToMedia(row: MediaRow): MediaItem {
     mimeType: row.mime_type,
     kind: row.kind,
     sizeBytes: row.size_bytes,
+    contentHash: row.content_hash ?? '',
     durationSeconds: row.duration_seconds,
     capturedAt: row.captured_at,
     source: row.source,
@@ -169,6 +189,38 @@ function rowToInsight(row: InsightRow): Insight {
   };
 }
 
+interface JobRow {
+  id: string;
+  kind: AnalysisJob['kind'];
+  media_id: string | null;
+  case_study_id: string | null;
+  draft_id: string | null;
+  status: AnalysisJob['status'];
+  attempts: number;
+  max_attempts: number;
+  run_at: string;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function rowToJob(row: JobRow): AnalysisJob {
+  return {
+    id: row.id,
+    kind: row.kind,
+    mediaId: row.media_id,
+    caseStudyId: row.case_study_id,
+    draftId: row.draft_id,
+    status: row.status,
+    attempts: row.attempts,
+    maxAttempts: row.max_attempts,
+    runAt: row.run_at,
+    error: row.error,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 export class ScreenStudyDb {
   private db: Database.Database;
 
@@ -177,6 +229,13 @@ export class ScreenStudyDb {
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
     this.db.exec(SCHEMA);
+    for (const statement of MIGRATIONS) {
+      try {
+        this.db.exec(statement);
+      } catch {
+        // Column already exists — migration already applied.
+      }
+    }
   }
 
   close(): void {
@@ -191,6 +250,7 @@ export class ScreenStudyDb {
     mimeType: string;
     kind: MediaItem['kind'];
     sizeBytes: number;
+    contentHash?: string | null;
     durationSeconds?: number | null;
     capturedAt?: string | null;
     source?: string | null;
@@ -198,8 +258,8 @@ export class ScreenStudyDb {
     const id = randomUUID();
     this.db
       .prepare(
-        `INSERT INTO media_items (id, filename, original_name, mime_type, kind, size_bytes, duration_seconds, captured_at, source)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO media_items (id, filename, original_name, mime_type, kind, size_bytes, content_hash, duration_seconds, captured_at, source)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -208,11 +268,19 @@ export class ScreenStudyDb {
         input.mimeType,
         input.kind,
         input.sizeBytes,
+        input.contentHash ?? null,
         input.durationSeconds ?? null,
         input.capturedAt ?? null,
         input.source ?? null,
       );
     return this.getMediaItem(id)!;
+  }
+
+  findMediaByHash(contentHash: string): MediaItem | null {
+    const row = this.db
+      .prepare('SELECT * FROM media_items WHERE content_hash = ? ORDER BY created_at ASC LIMIT 1')
+      .get(contentHash) as MediaRow | undefined;
+    return row ? rowToMedia(row) : null;
   }
 
   getMediaItem(id: string): MediaItem | null {
@@ -569,42 +637,127 @@ export class ScreenStudyDb {
       .run(new Date().toISOString(), id);
   }
 
-  // ---- Analysis jobs ----
+  // ---- Jobs (analysis & draft generation) ----
 
   createAnalysisJob(mediaId: string): AnalysisJob {
+    return this.createJob({ kind: 'analysis', mediaId });
+  }
+
+  createDraftJob(caseStudyId: string): AnalysisJob {
+    return this.createJob({ kind: 'draft', caseStudyId });
+  }
+
+  private createJob(input: {
+    kind: AnalysisJob['kind'];
+    mediaId?: string;
+    caseStudyId?: string;
+    maxAttempts?: number;
+    runAt?: string;
+  }): AnalysisJob {
     const id = randomUUID();
-    this.db.prepare('INSERT INTO analysis_jobs (id, media_id) VALUES (?, ?)').run(id, mediaId);
+    this.db
+      .prepare(
+        `INSERT INTO analysis_jobs (id, kind, media_id, case_study_id, max_attempts, run_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        id,
+        input.kind,
+        input.mediaId ?? null,
+        input.caseStudyId ?? null,
+        input.maxAttempts ?? 3,
+        input.runAt ?? new Date().toISOString(),
+      );
     return this.getAnalysisJob(id)!;
   }
 
   getAnalysisJob(id: string): AnalysisJob | null {
     const row = this.db.prepare('SELECT * FROM analysis_jobs WHERE id = ?').get(id) as
-      | {
-          id: string;
-          media_id: string;
-          status: AnalysisJob['status'];
-          error: string | null;
-          created_at: string;
-          updated_at: string;
-        }
+      | JobRow
       | undefined;
-    if (!row) return null;
-    return {
-      id: row.id,
-      mediaId: row.media_id,
-      status: row.status,
-      error: row.error,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    };
+    return row ? rowToJob(row) : null;
   }
 
-  updateAnalysisJob(id: string, status: AnalysisJob['status'], error?: string | null): void {
+  updateAnalysisJob(
+    id: string,
+    status: AnalysisJob['status'],
+    error?: string | null,
+    patch: { draftId?: string | null; runAt?: string } = {},
+  ): void {
     this.db
       .prepare(
-        `UPDATE analysis_jobs SET status = ?, error = ?, updated_at = datetime('now') WHERE id = ?`,
+        `UPDATE analysis_jobs SET status = ?, error = ?, draft_id = COALESCE(?, draft_id),
+           run_at = COALESCE(?, run_at), updated_at = datetime('now') WHERE id = ?`,
       )
-      .run(status, error ?? null, id);
+      .run(status, error ?? null, patch.draftId ?? null, patch.runAt ?? null, id);
+  }
+
+  /**
+   * Claim the next due pending job. The status flip happens inside an
+   * immediate transaction so a second worker cannot claim the same row.
+   * `ignoreRunAt` bypasses the due-time gate (used by tests to skip backoff).
+   */
+  claimNextJob(ignoreRunAt = false): AnalysisJob | null {
+    const now = new Date().toISOString();
+    const claim = this.db.transaction((): string | null => {
+      const row = ignoreRunAt
+        ? (this.db
+            .prepare(
+              `SELECT id FROM analysis_jobs WHERE status = 'pending'
+               ORDER BY created_at ASC LIMIT 1`,
+            )
+            .get() as { id: string } | undefined)
+        : (this.db
+            .prepare(
+              `SELECT id FROM analysis_jobs WHERE status = 'pending' AND run_at <= ?
+               ORDER BY created_at ASC LIMIT 1`,
+            )
+            .get(now) as { id: string } | undefined);
+      if (!row) return null;
+      const changed = this.db
+        .prepare(
+          `UPDATE analysis_jobs SET status = 'running', attempts = attempts + 1,
+             updated_at = datetime('now') WHERE id = ? AND status = 'pending'`,
+        )
+        .run(row.id);
+      return changed.changes === 1 ? row.id : null;
+    });
+    const id = claim.immediate();
+    return id ? this.getAnalysisJob(id) : null;
+  }
+
+  /** Mark a claimed job as retryable: failed now, pending again after backoff. */
+  rescheduleJob(id: string, error: string, backoffSeconds: number): void {
+    const runAt = new Date(Date.now() + backoffSeconds * 1000).toISOString();
+    this.db
+      .prepare(
+        `UPDATE analysis_jobs SET status = 'pending', error = ?, run_at = ?, updated_at = datetime('now')
+         WHERE id = ?`,
+      )
+      .run(error, runAt, id);
+  }
+
+  /** Requeue jobs whose worker died mid-run (crash recovery on startup). */
+  requeueStaleJobs(olderThanSeconds: number): number {
+    const cutoff = new Date(Date.now() - olderThanSeconds * 1000).toISOString();
+    const result = this.db
+      .prepare(
+        `UPDATE analysis_jobs SET status = 'pending', error = 'Worker restarted while running',
+           updated_at = datetime('now')
+         WHERE status = 'running' AND updated_at < ?`,
+      )
+      .run(cutoff);
+    return result.changes;
+  }
+
+  getLatestDraftJob(caseStudyId: string): AnalysisJob | null {
+    const row = this.db
+      .prepare(
+        `SELECT * FROM analysis_jobs WHERE case_study_id = ? AND kind = 'draft'
+         ORDER BY created_at DESC LIMIT 1`,
+      )
+      .get(caseStudyId) as JobRow | undefined;
+    return row ? rowToJob(row) : null;
   }
 
   listAnalysisJobs(limit = 50): AnalysisJob[] {

@@ -1,17 +1,18 @@
 import type { FastifyInstance } from 'fastify';
 import type { AppContext } from '../context.js';
-import { generateDraft } from '../services/article.js';
-import { publishDraft, unpublishDraft } from '../services/publish.js';
 
 export function registerDraftRoutes(app: FastifyInstance, ctx: AppContext): void {
-  // One-click draft generation for a case study.
+  // Draft generation for a case study. Generation is a multi-second AI call,
+  // so it runs as a background job (ADR-002 rule 4 / ADR-004), not in the
+  // request handler: the response is 202 + job, and the created draft id is
+  // attached to the job when it completes.
   app.post<{ Params: { id: string } }>(
     '/api/case-studies/:id/generate',
     async (request, reply) => {
       const study = ctx.db.getCaseStudy(request.params.id);
       if (!study) return reply.status(404).send({ error: 'Not found' });
-      const draft = await generateDraft(ctx.db, ctx.ai, study.id);
-      return reply.status(201).send({ draft });
+      const job = ctx.db.createDraftJob(study.id);
+      return reply.status(202).send({ job });
     },
   );
 
@@ -61,24 +62,56 @@ export function registerDraftRoutes(app: FastifyInstance, ctx: AppContext): void
     return { draft: updated };
   });
 
-  // Publishing.
+  // Publishing via the PublishingAdapter seam (ADR-010).
   app.post<{ Params: { id: string } }>('/api/drafts/:id/publish', async (request, reply) => {
     const draft = ctx.db.getDraft(request.params.id);
     if (!draft) return reply.status(404).send({ error: 'Not found' });
-    const record = publishDraft(ctx.db, ctx.config, draft.id);
-    const status = record.status === 'published' ? 201 : 500;
-    return reply.status(status).send({ record });
+    try {
+      const result = ctx.publisher.publish(ctx.db, draft.id);
+      const record = ctx.db.createPublishRecord({
+        draftId: draft.id,
+        target: ctx.publisher.target,
+        status: 'published',
+        path: result.location,
+      });
+      ctx.db.updateDraft(draft.id, { status: 'published' });
+      return reply.status(201).send({ record });
+    } catch (error) {
+      const record = ctx.db.createPublishRecord({
+        draftId: draft.id,
+        target: ctx.publisher.target,
+        status: 'failed',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return reply.status(500).send({ record });
+    }
   });
+
+  // Dry-run preview of a publish (spec: POST /drafts/{id}/publish/dry-run).
+  app.post<{ Params: { id: string } }>(
+    '/api/drafts/:id/publish/dry-run',
+    async (request, reply) => {
+      const draft = ctx.db.getDraft(request.params.id);
+      if (!draft) return reply.status(404).send({ error: 'Not found' });
+      try {
+        const bundle = ctx.publisher.dryRun(ctx.db, draft.id);
+        return { target: ctx.publisher.target, bundle };
+      } catch (error) {
+        return reply
+          .status(500)
+          .send({ error: error instanceof Error ? error.message : String(error) });
+      }
+    },
+  );
 
   app.post<{ Params: { recordId: string } }>(
     '/api/publish/:recordId/unpublish',
     async (request, reply) => {
-      try {
-        const record = unpublishDraft(ctx.db, ctx.config, request.params.recordId);
-        return { record };
-      } catch {
-        return reply.status(404).send({ error: 'Not found' });
-      }
+      const record = ctx.db.getPublishRecord(request.params.recordId);
+      if (!record) return reply.status(404).send({ error: 'Not found' });
+      ctx.publisher.retract(record);
+      ctx.db.markUnpublished(record.id);
+      return { record: ctx.db.getPublishRecord(record.id) };
     },
   );
 }

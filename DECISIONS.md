@@ -65,3 +65,39 @@ analysis_jobs    batch analysis progress/error tracking
 ## D7 — Tooling: ESLint (flat config), Vitest, GitHub Actions CI
 
 **Decision:** `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` all run in CI on every PR.
+
+## D8 — Background jobs: DB-polled runner with claim semantics, backoff, and crash recovery
+
+**Decision:** Analysis and draft-generation jobs are rows in `analysis_jobs` (with `kind`, `attempts`, `max_attempts`, `run_at`). A `JobRunner` polls the table, claims due `pending` jobs via an atomic status flip inside an immediate transaction, runs them, and retries failures with backoff (5s/30s/120s) up to `maxAttempts`. On startup, jobs left in `running` by a crashed process are requeued (`requeueStaleJobs`), so in-flight work is not silently lost. Draft generation (`POST /api/case-studies/:id/generate`) is now a job (202 + poll), not a synchronous HTTP call.
+
+**Rationale:** Satisfies NFR-R2/R5 (no lost jobs) and AC-ANL-03 (worker-kill recovery) with the stack already in place (better-sqlite3), without introducing a separate queue service. Preserves the ADR-004 seam: the route enqueues, the runner executes — swapping the runner for a real queue/worker later touches only `services/jobs.ts`.
+
+**Revisit if:** throughput or multi-process scaling demands a real broker (then Postgres-backed worker per ADR-005).
+
+## D9 — Publishing & storage seams: adapter interfaces
+
+**Decision:** Two interfaces decouple the app from its local-disk/SQLite MVP choices:
+- `StorageService` (`src/server/services/storage.ts`) wraps all file I/O; `LocalStorageService` is the disk implementation. Routes and the publisher never touch `fs` directly.
+- `PublishingAdapter` (`src/server/services/publish.ts`) exposes `render/dryRun/publish/retract` per ADR-010; `FilesystemPublisher` is the first implementation, and a dry-run endpoint (`POST /api/drafts/:id/publish/dry-run`) previews a publish without writing.
+
+**Rationale:** Keeps the Plan A→B migration cheap — S3 storage or a Git-push/CMS publishing target become new implementations of an interface, not refactors of call sites.
+
+## D10 — Upload integrity: magic-byte validation + content-hash dedupe
+
+**Decision:** Uploads are validated server-side by content, not just by client claims (FR-ING-04): binary formats are checked against magic-byte signatures (PNG/JPEG/GIF/WebP/MP4/WebM/MP3/WAV/OGG/FLAC, M4A via brand), and SVG by content marker. A SHA-256 `content_hash` is computed per upload; an identical re-upload returns the existing media item instead of storing a duplicate (FR-ING-07), reported in the response's `duplicates` array.
+
+## D11 — API versioning: `/api/v1` alias alongside `/api`
+
+**Decision:** The canonical surface stays `/api/…` (used by the bundled web client); the same routes are also mounted under `/api/v1/…` to match the PR #2 feature-spec contract. Both spellings coexist during the MVP.
+
+## Explicitly deferred (tracked, target sprint)
+
+Per the PR #2 plan, the following are intentionally **not** in this MVP and are deferred to the noted sprint:
+
+- **Authentication / per-user authorization** (ADR-006, NFR-S1) — single-user local tool by design (D2); no `users` table. *Target: when multi-user hosting is needed.*
+- **Observability** (ADR-009, NFR-O1/O2) — no structured logging/correlation IDs, OTel traces, or token/cost logging yet. *Target: Sprint 2 (OTel) / Sprint 5 (alerts).*
+- **Accessibility hardening** (ADR-008, NFR-A1–A5) — no Radix/axe CI/manual audit yet; the review dialog ships focus + Esc handling only. *Target: Sprint 4.*
+- **Chunked/resumable upload** (FR-ING-03) — whole-file multipart with a 500MB cap; no upload sessions. *Target: when >500MB recordings are common.*
+- **Malware scanning** (FR-ING-05, NFR-S2) — beyond signature sniffing. *Target: with storage backend.*
+- **Organization & groundedness rubrics** (AC-ORG-05, AC-GEN-04) — deterministic heuristics + gap detection ship instead. *Target: Sprint 3–4.*
+- **Git-push / CMS publishing target** (ADR-010) — the `PublishingAdapter` seam is in place; the Git adapter itself is deferred. *Target: Sprint 4.*

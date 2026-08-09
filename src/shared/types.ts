@@ -9,6 +9,7 @@ export interface MediaItem {
   mimeType: string;
   kind: MediaKind;
   sizeBytes: number;
+  contentHash: string;
   durationSeconds: number | null;
   capturedAt: string | null;
   source: string | null;
@@ -102,10 +103,18 @@ export interface PublishRecord {
   error: string | null;
 }
 
+export type JobKind = 'analysis' | 'draft';
+
 export interface AnalysisJob {
   id: string;
-  mediaId: string;
+  kind: JobKind;
+  mediaId: string | null;
+  caseStudyId: string | null;
+  draftId: string | null;
   status: 'pending' | 'running' | 'done' | 'failed';
+  attempts: number;
+  maxAttempts: number;
+  runAt: string;
   error: string | null;
   createdAt: string;
   updatedAt: string;

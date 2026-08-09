@@ -35,9 +35,18 @@ export function DraftsPage({ caseStudyId }: Props) {
     setBusy(true);
     setError(null);
     try {
-      const { draft } = await api.generateDraft(caseStudyId);
+      const { job } = await api.generateDraft(caseStudyId);
+      // Draft generation runs as a background job; poll until it completes.
+      let current = job;
+      while (current.status === 'pending' || current.status === 'running') {
+        await new Promise((r) => setTimeout(r, 500));
+        current = (await api.getJob(job.id)).job;
+      }
+      if (current.status !== 'done' || !current.draftId) {
+        throw new Error(current.error ?? 'Draft generation failed');
+      }
       await refresh();
-      await open(draft.id);
+      await open(current.draftId);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

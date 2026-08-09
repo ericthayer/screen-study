@@ -10,6 +10,8 @@ export interface AppConfig {
   host: string;
   /** Max upload size in bytes (default 500MB to accommodate screen recordings). */
   maxUploadBytes: number;
+  /** Job runner poll interval in milliseconds. */
+  jobPollMs: number;
   aiProvider: 'anthropic' | 'openai' | 'local';
   anthropicApiKey: string | undefined;
   anthropicModel: string;
@@ -28,6 +30,7 @@ export function loadConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     host: overrides.host ?? process.env.HOST ?? '0.0.0.0',
     maxUploadBytes:
       overrides.maxUploadBytes ?? Number(process.env.MAX_UPLOAD_BYTES ?? 500 * 1024 * 1024),
+    jobPollMs: overrides.jobPollMs ?? Number(process.env.JOB_POLL_MS ?? 500),
     aiProvider:
       overrides.aiProvider ??
       (process.env.AI_PROVIDER as AppConfig['aiProvider']) ??

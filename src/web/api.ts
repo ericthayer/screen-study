@@ -38,6 +38,7 @@ export const api = {
     json<{ job: AnalysisJob }>(`/api/media/${id}/analyze`, 'POST'),
   analyzeAll: () => json<{ jobs: AnalysisJob[] }>('/api/analysis/batch', 'POST', {}),
   listJobs: () => request<{ jobs: AnalysisJob[] }>('/api/analysis/jobs'),
+  getJob: (id: string) => request<{ job: AnalysisJob }>(`/api/analysis/jobs/${id}`),
   saveInsight: (mediaId: string, insight: Partial<Insight>) =>
     json<{ insight: Insight }>(`/api/insights/${mediaId}`, 'PUT', insight),
 
@@ -53,7 +54,7 @@ export const api = {
     request<void>(`/api/sections/${sectionId}/media/${mediaId}`, { method: 'DELETE' }),
 
   generateDraft: (caseStudyId: string) =>
-    json<{ draft: ArticleDraft }>(`/api/case-studies/${caseStudyId}/generate`, 'POST'),
+    json<{ job: AnalysisJob }>(`/api/case-studies/${caseStudyId}/generate`, 'POST'),
   listDrafts: (caseStudyId: string) =>
     request<{ drafts: ArticleDraft[] }>(`/api/case-studies/${caseStudyId}/drafts`),
   getDraft: (id: string) =>

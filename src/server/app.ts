@@ -7,6 +7,9 @@ import fastifyStatic from '@fastify/static';
 import { ensureDataDirs, loadConfig, type AppConfig } from './config.js';
 import { ScreenStudyDb } from './db.js';
 import { createAiProvider } from './services/ai.js';
+import { JobRunner } from './services/jobs.js';
+import { FilesystemPublisher } from './services/publish.js';
+import { LocalStorageService } from './services/storage.js';
 import type { AppContext } from './context.js';
 import { registerMediaRoutes } from './routes/media.js';
 import { registerAnalysisRoutes } from './routes/analysis.js';
@@ -16,6 +19,8 @@ import { registerDraftRoutes } from './routes/drafts.js';
 export interface BuildAppOptions {
   configOverrides?: Partial<AppConfig>;
   serveWeb?: boolean;
+  /** Start the background job runner (disable in tests, which drain manually). */
+  startJobRunner?: boolean;
 }
 
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
@@ -23,10 +28,16 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   ensureDataDirs(config);
 
   const app = Fastify({ logger: process.env.NODE_ENV !== 'test' });
+  const db = new ScreenStudyDb(config.dbPath);
+  const ai = createAiProvider(config);
+  const storage = new LocalStorageService(config.mediaDir);
   const ctx: AppContext = {
     config,
-    db: new ScreenStudyDb(config.dbPath),
-    ai: createAiProvider(config),
+    db,
+    ai,
+    storage,
+    publisher: new FilesystemPublisher(storage),
+    jobs: new JobRunner(db, ai, storage, config.jobPollMs),
   };
 
   await app.register(multipart, {
@@ -46,12 +57,18 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     decorateReply: false,
   });
 
-  registerMediaRoutes(app, ctx);
-  registerAnalysisRoutes(app, ctx);
-  registerCaseStudyRoutes(app, ctx);
-  registerDraftRoutes(app, ctx);
+  const registerApi = (instance: FastifyInstance) => {
+    registerMediaRoutes(instance, ctx);
+    registerAnalysisRoutes(instance, ctx);
+    registerCaseStudyRoutes(instance, ctx);
+    registerDraftRoutes(instance, ctx);
+    instance.get('/api/health', async () => ({ status: 'ok', provider: ctx.ai.name }));
+  };
 
-  app.get('/api/health', async () => ({ status: 'ok', provider: ctx.ai.name }));
+  // Canonical surface. The /api/v1 alias keeps the spec'd contract (PR #2
+  // feature specs) working while both spellings coexist.
+  registerApi(app);
+  await app.register(async (instance) => registerApi(instance), { prefix: '/api/v1' });
 
   // Serve the built web client in production.
   const webDist = path.join(process.cwd(), 'dist', 'web');
@@ -65,7 +82,15 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     });
   }
 
+  if (options.startJobRunner !== false) {
+    ctx.jobs.start();
+  }
+
+  // Expose the context for tests and operational tooling.
+  (app as unknown as { ctx: AppContext }).ctx = ctx;
+
   app.addHook('onClose', async () => {
+    ctx.jobs.stop();
     ctx.db.close();
   });
 

@@ -1,47 +1,13 @@
-import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import type { AppContext } from '../context.js';
 
-async function runAnalysis(ctx: AppContext, jobId: string): Promise<void> {
-  const job = ctx.db.getAnalysisJob(jobId);
-  if (!job) return;
-  const media = ctx.db.getMediaItem(job.mediaId);
-  if (!media) {
-    ctx.db.updateAnalysisJob(jobId, 'failed', 'Media item not found');
-    return;
-  }
-  ctx.db.updateAnalysisJob(jobId, 'running');
-  ctx.db.updateMediaStatus(media.id, 'analyzing');
-  try {
-    const absolutePath = path.join(ctx.config.mediaDir, media.filename);
-    const analysis = await ctx.ai.analyzeMedia(media, absolutePath);
-    ctx.db.upsertInsight({
-      mediaId: media.id,
-      summary: analysis.summary,
-      activity: analysis.activity,
-      decisions: analysis.decisions,
-      outcomes: analysis.outcomes,
-      extractedText: analysis.extractedText,
-      transcript: analysis.transcript,
-      provider: ctx.ai.name,
-      model: ctx.ai.model,
-    });
-    ctx.db.updateMediaStatus(media.id, 'analyzed');
-    ctx.db.updateAnalysisJob(jobId, 'done');
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    ctx.db.updateMediaStatus(media.id, 'failed');
-    ctx.db.updateAnalysisJob(jobId, 'failed', message);
-  }
-}
-
 export function registerAnalysisRoutes(app: FastifyInstance, ctx: AppContext): void {
-  // Analyze a single media item.
+  // Analyze a single media item. The job is queued in SQLite and executed by
+  // the background job runner (ADR-004) — never inline in the request.
   app.post<{ Params: { id: string } }>('/api/media/:id/analyze', async (request, reply) => {
     const media = ctx.db.getMediaItem(request.params.id);
     if (!media) return reply.status(404).send({ error: 'Not found' });
     const job = ctx.db.createAnalysisJob(media.id);
-    void runAnalysis(ctx, job.id);
     return reply.status(202).send({ job });
   });
 
@@ -56,9 +22,7 @@ export function registerAnalysisRoutes(app: FastifyInstance, ctx: AppContext): v
     const jobs = [];
     for (const id of ids) {
       if (!ctx.db.getMediaItem(id)) continue;
-      const job = ctx.db.createAnalysisJob(id);
-      jobs.push(job);
-      void runAnalysis(ctx, job.id);
+      jobs.push(ctx.db.createAnalysisJob(id));
     }
     return reply.status(202).send({ jobs });
   });
@@ -70,6 +34,30 @@ export function registerAnalysisRoutes(app: FastifyInstance, ctx: AppContext): v
       return { jobs: ctx.db.listAnalysisJobs() };
     },
   );
+
+  app.get<{ Params: { id: string } }>('/api/analysis/jobs/:id', async (request, reply) => {
+    const job = ctx.db.getAnalysisJob(request.params.id);
+    if (!job) return reply.status(404).send({ error: 'Not found' });
+    return { job };
+  });
+
+  // Retry a failed analysis job (spec: POST /jobs/{id}/retry).
+  app.post<{ Params: { id: string } }>('/api/analysis/jobs/:id/retry', async (request, reply) => {
+    const job = ctx.db.getAnalysisJob(request.params.id);
+    if (!job) return reply.status(404).send({ error: 'Not found' });
+    if (job.status !== 'failed') {
+      return reply.status(409).send({ error: `Job is ${job.status}; only failed jobs can be retried` });
+    }
+    const retried = ctx.db.createAnalysisJob(job.mediaId!);
+    return reply.status(202).send({ job: retried });
+  });
+
+  // Analysis (insight) for a media item (spec: GET /media/{id}/analysis).
+  app.get<{ Params: { id: string } }>('/api/media/:id/analysis', async (request, reply) => {
+    const media = ctx.db.getMediaItem(request.params.id);
+    if (!media) return reply.status(404).send({ error: 'Not found' });
+    return { insight: ctx.db.getInsightByMedia(media.id) };
+  });
 
   // Human review/edit of an insight.
   app.put<{
