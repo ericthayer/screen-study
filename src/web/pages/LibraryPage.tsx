@@ -106,9 +106,9 @@ export function LibraryPage() {
         {items.map((item) => (
           <div key={item.id} className="media-card">
             {item.kind === 'image' ? (
-              <img src={`/media/${item.filename}`} alt={item.originalName} loading="lazy" />
+              <img src={`/files/${item.filename}`} alt={item.originalName} loading="lazy" />
             ) : item.kind === 'video' ? (
-              <video src={`/media/${item.filename}`} controls preload="metadata" />
+              <video src={`/files/${item.filename}`} controls preload="metadata" />
             ) : (
               <div className="placeholder">🎙</div>
             )}

@@ -7,7 +7,7 @@ export function registerDraftRoutes(app: FastifyInstance, ctx: AppContext): void
   // request handler: the response is 202 + job, and the created draft id is
   // attached to the job when it completes.
   app.post<{ Params: { id: string } }>(
-    '/api/case-studies/:id/generate',
+    '/case-studies/:id/generate',
     async (request, reply) => {
       const study = ctx.db.getCaseStudy(request.params.id);
       if (!study) return reply.status(404).send({ error: 'Not found' });
@@ -16,20 +16,20 @@ export function registerDraftRoutes(app: FastifyInstance, ctx: AppContext): void
     },
   );
 
-  app.get<{ Params: { id: string } }>('/api/case-studies/:id/drafts', async (request, reply) => {
+  app.get<{ Params: { id: string } }>('/case-studies/:id/drafts', async (request, reply) => {
     const study = ctx.db.getCaseStudy(request.params.id);
     if (!study) return reply.status(404).send({ error: 'Not found' });
     return { drafts: ctx.db.listDrafts(study.id) };
   });
 
-  app.get<{ Params: { id: string } }>('/api/drafts/:id', async (request, reply) => {
+  app.get<{ Params: { id: string } }>('/drafts/:id', async (request, reply) => {
     const draft = ctx.db.getDraft(request.params.id);
     if (!draft) return reply.status(404).send({ error: 'Not found' });
     return { draft, publishRecords: ctx.db.listPublishRecords(draft.id) };
   });
 
   // Export the canonical Markdown (with frontmatter).
-  app.get<{ Params: { id: string } }>('/api/drafts/:id/export', async (request, reply) => {
+  app.get<{ Params: { id: string } }>('/drafts/:id/export', async (request, reply) => {
     const draft = ctx.db.getDraft(request.params.id);
     if (!draft) return reply.status(404).send({ error: 'Not found' });
     return reply
@@ -45,7 +45,7 @@ export function registerDraftRoutes(app: FastifyInstance, ctx: AppContext): void
   app.patch<{
     Params: { id: string };
     Body: { title?: string; markdown?: string; status?: 'draft' | 'review' | 'published' };
-  }>('/api/drafts/:id', async (request, reply) => {
+  }>('/drafts/:id', async (request, reply) => {
     const draft = ctx.db.getDraft(request.params.id);
     if (!draft) return reply.status(404).send({ error: 'Not found' });
     if (request.body?.markdown && request.body.markdown !== draft.markdown) {
@@ -63,7 +63,7 @@ export function registerDraftRoutes(app: FastifyInstance, ctx: AppContext): void
   });
 
   // Publishing via the PublishingAdapter seam (ADR-010).
-  app.post<{ Params: { id: string } }>('/api/drafts/:id/publish', async (request, reply) => {
+  app.post<{ Params: { id: string } }>('/drafts/:id/publish', async (request, reply) => {
     const draft = ctx.db.getDraft(request.params.id);
     if (!draft) return reply.status(404).send({ error: 'Not found' });
     try {
@@ -89,7 +89,7 @@ export function registerDraftRoutes(app: FastifyInstance, ctx: AppContext): void
 
   // Dry-run preview of a publish (spec: POST /drafts/{id}/publish/dry-run).
   app.post<{ Params: { id: string } }>(
-    '/api/drafts/:id/publish/dry-run',
+    '/drafts/:id/publish/dry-run',
     async (request, reply) => {
       const draft = ctx.db.getDraft(request.params.id);
       if (!draft) return reply.status(404).send({ error: 'Not found' });
@@ -105,7 +105,7 @@ export function registerDraftRoutes(app: FastifyInstance, ctx: AppContext): void
   );
 
   app.post<{ Params: { recordId: string } }>(
-    '/api/publish/:recordId/unpublish',
+    '/publish/:recordId/unpublish',
     async (request, reply) => {
       const record = ctx.db.getPublishRecord(request.params.recordId);
       if (!record) return reply.status(404).send({ error: 'Not found' });

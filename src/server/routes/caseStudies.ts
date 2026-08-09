@@ -4,7 +4,7 @@ import { autoOrganize, getOutline } from '../services/organize.js';
 
 export function registerCaseStudyRoutes(app: FastifyInstance, ctx: AppContext): void {
   app.post<{ Body: { title?: string; weekStart?: string } }>(
-    '/api/case-studies',
+    '/case-studies',
     async (request, reply) => {
       const title = request.body?.title?.trim();
       if (!title) return reply.status(400).send({ error: 'title is required' });
@@ -14,14 +14,14 @@ export function registerCaseStudyRoutes(app: FastifyInstance, ctx: AppContext): 
   );
 
   app.get(
-    '/api/case-studies',
+    '/case-studies',
     { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
     async () => {
       return { caseStudies: ctx.db.listCaseStudies() };
     },
   );
 
-  app.get<{ Params: { id: string } }>('/api/case-studies/:id', async (request, reply) => {
+  app.get<{ Params: { id: string } }>('/case-studies/:id', async (request, reply) => {
     const study = ctx.db.getCaseStudy(request.params.id);
     if (!study) return reply.status(404).send({ error: 'Not found' });
     return { outline: getOutline(ctx.db, study.id) };
@@ -29,7 +29,7 @@ export function registerCaseStudyRoutes(app: FastifyInstance, ctx: AppContext): 
 
   // Auto-organize unassigned analyzed media into sections.
   app.post<{ Params: { id: string } }>(
-    '/api/case-studies/:id/auto-organize',
+    '/case-studies/:id/auto-organize',
     async (request, reply) => {
       const study = ctx.db.getCaseStudy(request.params.id);
       if (!study) return reply.status(404).send({ error: 'Not found' });
@@ -39,7 +39,7 @@ export function registerCaseStudyRoutes(app: FastifyInstance, ctx: AppContext): 
 
   // Rename a section (manual override).
   app.patch<{ Params: { sectionId: string }; Body: { title?: string } }>(
-    '/api/sections/:sectionId',
+    '/sections/:sectionId',
     async (request, reply) => {
       const title = request.body?.title?.trim();
       if (!title) return reply.status(400).send({ error: 'title is required' });
@@ -50,7 +50,7 @@ export function registerCaseStudyRoutes(app: FastifyInstance, ctx: AppContext): 
 
   // Move a media item into a section (manual override).
   app.put<{ Params: { sectionId: string; mediaId: string } }>(
-    '/api/sections/:sectionId/media/:mediaId',
+    '/sections/:sectionId/media/:mediaId',
     async (request, reply) => {
       if (!ctx.db.getMediaItem(request.params.mediaId)) {
         return reply.status(404).send({ error: 'Media not found' });
@@ -61,7 +61,7 @@ export function registerCaseStudyRoutes(app: FastifyInstance, ctx: AppContext): 
   );
 
   app.delete<{ Params: { sectionId: string; mediaId: string } }>(
-    '/api/sections/:sectionId/media/:mediaId',
+    '/sections/:sectionId/media/:mediaId',
     async (request, reply) => {
       ctx.db.removeMediaFromSection(request.params.sectionId, request.params.mediaId);
       return reply.status(204).send();

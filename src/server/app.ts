@@ -50,24 +50,27 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     timeWindow: '1 minute',
   });
 
-  // Serve uploaded media.
+  // Serve uploaded media (kept off /api and /api/v1 so the media CRUD routes
+  // own that namespace).
   await app.register(fastifyStatic, {
     root: config.mediaDir,
-    prefix: '/media/',
+    prefix: '/files/',
     decorateReply: false,
   });
 
+  // Routes are registered at root-relative paths (e.g. /media, /health) so
+  // they can be mounted under both /api and /api/v1 prefixes.
   const registerApi = (instance: FastifyInstance) => {
     registerMediaRoutes(instance, ctx);
     registerAnalysisRoutes(instance, ctx);
     registerCaseStudyRoutes(instance, ctx);
     registerDraftRoutes(instance, ctx);
-    instance.get('/api/health', async () => ({ status: 'ok', provider: ctx.ai.name }));
+    instance.get('/health', async () => ({ status: 'ok', provider: ctx.ai.name }));
   };
 
-  // Canonical surface. The /api/v1 alias keeps the spec'd contract (PR #2
-  // feature specs) working while both spellings coexist.
-  registerApi(app);
+  // Canonical surface (/api) plus the spec'd versioned alias (/api/v1) — both
+  // resolve to the same handlers. (D11)
+  await app.register(async (instance) => registerApi(instance), { prefix: '/api' });
   await app.register(async (instance) => registerApi(instance), { prefix: '/api/v1' });
 
   // Serve the built web client in production.
@@ -75,7 +78,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   if (options.serveWeb !== false && fs.existsSync(webDist)) {
     await app.register(fastifyStatic, { root: webDist, prefix: '/' });
     app.setNotFoundHandler((request, reply) => {
-      if (request.raw.url?.startsWith('/api/') || request.raw.url?.startsWith('/media/')) {
+      if (request.raw.url?.startsWith('/api/') || request.raw.url?.startsWith('/files/')) {
         return reply.status(404).send({ error: 'Not found' });
       }
       return reply.sendFile('index.html');

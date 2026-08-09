@@ -201,13 +201,15 @@ describe('ScreenStudy API (end-to-end pipeline)', () => {
     expect(existsSync(path.join(dataDir, 'media', filename))).toBe(false);
   });
 
-  it('serves the same API under /api/v1', async () => {
-    const health = await app.inject({ method: 'GET', url: '/api/v1/api/health' });
-    expect(health.statusCode).toBe(200);
-    expect(health.json()).toMatchObject({ status: 'ok', provider: 'local' });
+  it('serves the same API under /api and /api/v1', async () => {
+    for (const prefix of ['/api', '/api/v1']) {
+      const health = await app.inject({ method: 'GET', url: `${prefix}/health` });
+      expect(health.statusCode).toBe(200);
+      expect(health.json()).toMatchObject({ status: 'ok', provider: 'local' });
 
-    const list = await app.inject({ method: 'GET', url: '/api/v1/api/media' });
-    expect(list.statusCode).toBe(200);
+      const list = await app.inject({ method: 'GET', url: `${prefix}/media` });
+      expect(list.statusCode).toBe(200);
+    }
   });
 
   it('dedupes uploads by content hash', async () => {

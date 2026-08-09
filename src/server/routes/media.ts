@@ -83,7 +83,7 @@ export function registerMediaRoutes(app: FastifyInstance, ctx: AppContext): void
   // Stricter limits for expensive I/O routes (uploads and file deletes).
   const ioRateLimit = { rateLimit: { max: 60, timeWindow: '1 minute' } };
 
-  app.post('/api/media', { config: ioRateLimit }, async (request, reply) => {
+  app.post('/media', { config: ioRateLimit }, async (request, reply) => {
     // Two passes: stream file parts to disk first, then apply field metadata.
     // Form fields may arrive after file parts (standard browser FormData order),
     // so fields cannot be consumed in the same pass as the files.
@@ -119,16 +119,14 @@ export function registerMediaRoutes(app: FastifyInstance, ctx: AppContext): void
           sniffed === claimedKind || (claimedKind === 'audio' && bytes && isM4a(bytes))
             ? claimedKind
             : null;
-        if (!kind) {
+        if (!kind || !bytes) {
           ctx.storage.deleteFile(filename);
           return reply.status(415).send({
             error: `File content does not match an allowed media type: ${part.filename}`,
           });
         }
 
-        const contentHash = createHash('sha256')
-          .update(bytes ?? Buffer.alloc(0))
-          .digest('hex');
+        const contentHash = createHash('sha256').update(bytes).digest('hex');
         pending.push({
           filename,
           originalName: part.filename,
@@ -168,21 +166,21 @@ export function registerMediaRoutes(app: FastifyInstance, ctx: AppContext): void
   });
 
   app.get(
-    '/api/media',
+    '/media',
     { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
     async () => {
       return { items: ctx.db.listMediaItems() };
     },
   );
 
-  app.get<{ Params: { id: string } }>('/api/media/:id', async (request, reply) => {
+  app.get<{ Params: { id: string } }>('/media/:id', async (request, reply) => {
     const item = ctx.db.getMediaItem(request.params.id);
     if (!item) return reply.status(404).send({ error: 'Not found' });
     return { item: { ...item, insight: ctx.db.getInsightByMedia(item.id) } };
   });
 
   app.patch<{ Params: { id: string }; Body: { capturedAt?: string; source?: string; durationSeconds?: number } }>(
-    '/api/media/:id',
+    '/media/:id',
     async (request, reply) => {
       const item = ctx.db.updateMediaItem(request.params.id, request.body ?? {});
       if (!item) return reply.status(404).send({ error: 'Not found' });
@@ -191,7 +189,7 @@ export function registerMediaRoutes(app: FastifyInstance, ctx: AppContext): void
   );
 
   app.delete<{ Params: { id: string } }>(
-    '/api/media/:id',
+    '/media/:id',
     { config: ioRateLimit },
     async (request, reply) => {
       const item = ctx.db.deleteMediaItem(request.params.id);

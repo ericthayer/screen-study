@@ -83,14 +83,16 @@ export class FilesystemPublisher implements PublishingAdapter {
       bundle.markdown.replace(/^draft: true$/m, 'draft: false'),
     );
 
-    const location = this.storage.absolutePath(prefix);
-    return { location: location ?? prefix };
+    // Return the absolute published directory as the location so operators can
+    // find the output on disk; retract() resolves it back to the storage key.
+    return { location: this.storage.absolutePath(prefix) ?? prefix };
   }
 
   retract(record: PublishRecord): void {
     if (record.status === 'published' && record.path) {
-      const prefix = path.basename(record.path);
-      this.storage.deleteDir(prefix);
+      // record.path is the absolute directory returned by publish(); the slug
+      // (last segment) is the storage key.
+      this.storage.deleteDir(path.basename(record.path));
     }
   }
 }

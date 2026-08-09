@@ -32,7 +32,8 @@ export class LocalStorageService implements StorageService {
 
   private resolve(key: string): string {
     const resolved = path.resolve(this.baseDir, key);
-    if (!resolved.startsWith(path.resolve(this.baseDir) + path.sep)) {
+    const base = path.resolve(this.baseDir);
+    if (resolved !== base && !resolved.startsWith(base + path.sep)) {
       throw new Error(`Storage key escapes base directory: ${key}`);
     }
     return resolved;
