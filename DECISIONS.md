@@ -2,6 +2,8 @@
 
 This document records the Sprint 1 decisions that unblock the rest of the roadmap. Each entry includes the decision, the rationale, and what it would take to revisit it.
 
+Per-decision records live in [`docs/adr/`](docs/adr/) (ADR-001…010); code comments reference those ADR numbers, and this file remains the sprint-level summary (the D-numbers below map to the ADRs in the [`docs/adr/` index](docs/adr/README.md)).
+
 ## D1 — Stack: Node.js + TypeScript, Fastify backend, React + Vite frontend
 
 **Decision:** Single TypeScript monorepo. Fastify serves the REST API and static assets; React + Vite serves the web client.
