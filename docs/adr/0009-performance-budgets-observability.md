@@ -22,4 +22,4 @@ The PR #2 plan called for structured logging with correlation IDs, OpenTelemetry
 
 - Positive: zero telemetry dependencies; failures are still visible and recoverable via the job table and retry endpoints.
 - Negative / accepted risks: no latency percentiles, no AI cost tracking, no alerting; diagnosing provider flakiness relies on stored job errors.
-- Follow-ups / re-evaluation triggers: Sprint 2 — OTel traces across upload → analysis → draft → publish; Sprint 5 — dashboards, alerting, and token/cost logging. These feeds the Plan A→B re-evaluation gate described in ADR-002.
+- Follow-ups / re-evaluation triggers: Sprint 2 — OTel traces across upload → analysis → draft → publish; Sprint 5 — dashboards, alerting, and token/cost logging. This feeds the Plan A→B re-evaluation gate described in ADR-002.
