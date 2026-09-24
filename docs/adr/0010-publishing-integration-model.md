@@ -1,39 +1,31 @@
-# ADR-010: Publishing Integration Model (Static Export First, Adapter Interface)
+# ADR-010: Publishing Integration Model (Static Export First, Behind an Adapter Seam)
 
-- **Status:** Proposed
+- **Status:** Accepted (MVP scope: filesystem publisher; Git-push/CMS adapter deferred to Sprint 4)
 - **Date:** 2026-08-08
 - **Deciders:** Maintainers
-- **Related:** [feature-automated-publishing](../specs/feature-automated-publishing.md), [ADR-006](0006-authn-authz-approach.md), [ADR-002](0002-backend-architecture.md)
+- **Related:** [ADR-002](0002-backend-architecture.md), [ADR-003](0003-database-strategy.md), DECISIONS.md D4, D5, D9
 
 ## Context
 
-Users publish to heterogeneous targets (static site generators, Git-backed blogs, CMSs). Building API-push integrations first couples the roadmap to third-party APIs before the core loop is proven; export-only forever under-delivers "automated publishing". The decision is sequencing and architecture, not ambition.
+Generated articles need a publishing target. Options range from static export (droppable into any static site generator) to API push (hosted CMS) to Git-push (content PRs). The PR #2 plan chose "static export first" with an adapter interface; the MVP implements exactly that, with the Git adapter deferred.
 
 ## Decision
 
-**v1 ships static export as the canonical format, plus one Git push adapter (commit/PR to a user repo) as the first automated target. All targets implement a `PublishingAdapter` interface; additional targets (CMS APIs) are added by amending this ADR.**
+**Publishing writes a static-export directory per article via the `PublishingAdapter` interface (`src/server/services/publish.ts`). The first implementation is `FilesystemPublisher`; drafts are Markdown with YAML frontmatter, versioned in the `article_drafts` table.**
 
-Canonical export (target-independent):
-
-```
-<slug>/
-  index.md        # YAML front matter (title, summary, tags, date, draft: false)
-  media/          # optimized copies of referenced assets
-```
-
-- Alt text is mandatory in the bundle (AC-PUB-01) — accessibility is enforced at the export boundary.
-- The **Git adapter** (first target) commits the bundle to a configured repo/branch or opens a PR, using OAuth tokens with minimal scopes (ADR-006).
-- The adapter interface (`render(draft) → bundle`, `dryRun(target, bundle) → diff`, `publish(target, bundle) → receipt`, `retract(publication) → receipt`) keeps `publishing` module internals pluggable per ADR-002 discipline.
-- Idempotency keys make retries safe (AC-PUB-03).
+- Publish output: `PUBLISH_DIR/<slug>/` containing `index.md` (Markdown + frontmatter: `title`, `date`, `draft`) plus the referenced media files, with media references rewritten to relative `./file` links.
+- The adapter exposes `render / dryRun / publish / retract`; `POST /api/drafts/:id/publish/dry-run` previews a publish without writing.
+- Unpublish is a directory delete; publish/unpublish history is tracked in SQLite (`publish_records`).
+- Editing a draft creates a new version rather than mutating in place.
 
 ## Alternatives Considered
 
-- **API push first (WordPress/Medium/Dev.to)** — fastest "magic", but each target has auth models, rate limits, and content-model quirks; proves less of the core loop. Rejected as the *first* target; retained as adapter roadmap.
-- **Export-only (download ZIP)** — zero integration risk but manual last mile; the Git adapter is a small step with big perceived automation value. Rejected as the whole story.
-- **Hosted publishing (we host the blog)** — becomes a different product. Rejected.
+- **Direct CMS API push** — immediate "published URL," but locks the MVP to one vendor and requires network + credentials. Rejected as the first target; viable as a future adapter.
+- **Git-push publishing (content PRs)** — excellent review workflow; deferred to Sprint 4 as a new `PublishingAdapter` implementation (the seam is already in place).
+- **Hard-coded filesystem writes in the route** — simplest, but violates ADR-002 boundary discipline and makes future targets expensive. Rejected.
 
 ## Consequences
 
-- Positive: every static-site user (Hugo/Astro/Next/Eleventy/GitHub Pages) is served by one format; dry-run diff is natural in Git; adapters are independently testable against recorded fixtures.
-- Negative / accepted risks: Git adapter UX must handle non-technical git states (branch protection, conflicts) — dry-run + PR mode mitigates; CMS users wait for later adapters.
-- Follow-ups: second target chosen from user feedback (NFR §6 tracks "publishing integration complexity" as a Plan B trigger); adapter contract tests in Sprint 4.
+- Positive: output drops directly into Astro/Hugo/Eleventy content collections — no lock-in; publish is testable offline via dry-run; retract is trivial and audited.
+- Negative / accepted risks: no hosted URL or CDN — the operator runs their own static site; publish history is local-only.
+- Follow-ups / re-evaluation triggers: Sprint 4 — implement the Git-push/CMS adapter behind the existing `PublishingAdapter` interface, touching no call sites.

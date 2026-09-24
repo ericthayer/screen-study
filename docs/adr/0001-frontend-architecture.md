@@ -1,29 +1,30 @@
-# ADR-001: Frontend Architecture (SPA Framework + Component System)
+# ADR-001: Frontend Architecture (React + Vite SPA)
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-08-08
 - **Deciders:** Maintainers
-- **Related:** [PRD](../specs/product-requirements.md), [ADR-008](0008-accessibility-compliance-target.md), [ADR-009](0009-performance-budgets-observability.md), [frontend-architecture](../architecture/frontend-architecture.md)
+- **Related:** [ADR-002](0002-backend-architecture.md), DECISIONS.md D1
 
 ## Context
 
-ScreenStudy's UI is an authenticated, highly interactive app: chunked uploads with progress, job status timelines, drag-and-drop organization, and a structured draft editor. A content-site approach (MPA/SSG) fits poorly; the publishing targets are outputs, not the app itself. The stack must support strong accessibility primitives and a strict performance budget (NFR-P1/P2).
+ScreenStudy needs a web client for uploading media, tracking analysis jobs, reviewing/editing drafts, and publishing. The team is small and the app is a single-user local tool, so build tooling and iteration speed matter more than framework ecosystem breadth.
 
 ## Decision
 
-**Adopt a React SPA built with Vite + TypeScript, with an accessible component system built on Radix UI primitives + Tailwind CSS, TanStack Query for server state, and React Router for routing.**
+**The web client is a React single-page application built with Vite, written in TypeScript, living in the same monorepo as the backend (`src/web/`).**
 
-> Status is **Proposed** until Sprint 0 sign-off. This ADR records the leading option and its rationale so work can begin; the decision is confirmed or amended at the Sprint 0 spec gate.
+- Vite dev server runs on :5173 and proxies API/media requests to the Fastify server on :3000.
+- Production build (`vite build`) outputs static assets that the Fastify server serves directly.
+- The data model (`src/shared/types.ts`) is shared between client and server without code generation.
 
 ## Alternatives Considered
 
-- **Next.js (React meta-framework)** — SSR/SEO strengths are irrelevant for an authenticated app; adds server runtime complexity and lock-in. Rejected for v1; the exported *articles* get SEO from the publishing target, not the app.
-- **Vue/Svelte + Vite** — excellent ergonomics, but smaller ecosystem of battle-tested accessible primitives and hiring familiarity. Rejected on ecosystem risk.
-- **HTMX/Alpine MPA** — lowest complexity, but drag-and-drop organization, live job timelines, and the editor push well past its sweet spot. Rejected.
-- **Material UI / Chakra instead of Radix+Tailwind** — faster start, heavier bundle and harder visual identity. Rejected on NFR-P2 budget and design flexibility.
+- **Next.js / SSR framework** — server rendering and routing conventions are unnecessary for a local single-user tool; adds deployment complexity. Rejected for the MVP.
+- **Plain HTML/vanilla JS** — no component model or state management; the review/edit UX would be painful to build and maintain. Rejected.
+- **Vue/Svelte** — viable, but React's ecosystem (testing, component libraries for the future accessibility work in ADR-008) is the safer default.
 
 ## Consequences
 
-- Positive: large ecosystem; first-class a11y primitives (Radix) aligned with WCAG 2.2 AA target; small initial bundle (Vite code-splitting, no server runtime); TypeScript end to end.
-- Negative / accepted risks: SPA means client-side routing/a11y focus management is our responsibility (see [frontend-architecture](../architecture/frontend-architecture.md)); no SSR safety net if a future marketing site appears (build it separately).
-- Follow-ups: component inventory in Sprint 1; bundle budget enforced in CI (ADR-009).
+- Positive: instant dev feedback; one language across the stack; simple production build with no separate frontend deployment.
+- Negative / accepted risks: no SSR/SEO (irrelevant for a local tool); React bundle size is accepted for the MVP.
+- Follow-ups: component-system and accessibility hardening decisions land with [ADR-008](0008-accessibility-compliance-target.md) work in Sprint 4.

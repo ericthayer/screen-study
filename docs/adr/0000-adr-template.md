@@ -1,6 +1,6 @@
 # ADR-NNNN: Title
 
-- **Status:** Proposed | Accepted | Deprecated | Superseded by ADR-XXXX
+- **Status:** Proposed | Accepted | Deferred | Deprecated | Superseded by ADR-XXXX
 - **Date:** YYYY-MM-DD
 - **Deciders:** (people involved)
 - **Related:** (specs, ADRs, issues)

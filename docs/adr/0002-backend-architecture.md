@@ -1,33 +1,32 @@
-# ADR-002: Backend Architecture (Modular Monolith First)
+# ADR-002: Backend Architecture (Modular Monolith with Boundary Discipline)
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-08-08
 - **Deciders:** Maintainers
-- **Related:** [PRD](../specs/product-requirements.md), [ADR-004](0004-ai-orchestration-pattern.md), [ADR-005](0005-media-processing-pipeline.md), [ADR-010](0010-publishing-integration-model.md), [backend-architecture](../architecture/backend-architecture.md)
+- **Related:** [ADR-003](0003-database-strategy.md), [ADR-004](0004-ai-orchestration-pattern.md), [ADR-010](0010-publishing-integration-model.md), DECISIONS.md D1, D6, D9
 
 ## Context
 
-The delivery-plan comparison favors Plan A ("MVP Monolith First") for a small team with high uncertainty: fastest delivery, lowest ops overhead. The risk is later refactoring cost; that is mitigated by explicit **modular boundary discipline** so modules can be extracted into services (Plan B) if the Sprint 2 re-evaluation triggers fire.
+The PR #2 plan evaluated two delivery paths: Plan A (MVP monolith first, fastest time-to-value) and Plan B (pipeline-first modular services). Plan A was adopted, but only with explicit "modular boundary discipline" so a later migration toward Plan B stays low-risk instead of requiring a rewrite.
 
 ## Decision
 
-**Adopt a modular monolith: a single deployable backend (Node.js/TypeScript, Fastify) with four internal modules mirroring the bounded contexts — `ingestion`, `analysis`, `composition`, `publishing` — plus a worker process (same codebase, separate entrypoint) for async jobs.**
+**The backend is a single Fastify + TypeScript service (modular monolith). Modules communicate through application-level service interfaces, and all long-running work goes through the job queue — never inline in an HTTP request.**
 
-Modular boundary discipline (enforced by lint rules + code review):
+Boundary discipline rules:
 
-1. Each module owns its own tables; cross-module reads go through the owning module's application service, never direct table access.
-2. Modules communicate through explicit service interfaces and domain events (in-process pub/sub now, swappable for a bus).
-3. Storage access only through the storage abstraction (see [ADR-003](0003-database-strategy.md)).
-4. No long-running work in request handlers (see [ADR-004](0004-ai-orchestration-pattern.md)).
+1. Each feature module owns its own tables; cross-module reads go through the owning module's service interface (no cross-module table access).
+2. All long-running work (analysis, draft generation) is enqueued as a job; routes only enqueue and return job handles (see [ADR-004](0004-ai-orchestration-pattern.md)).
+3. All file I/O goes through the `StorageService` seam, never direct `fs` calls in routes or publishers (see [ADR-003](0003-database-strategy.md)).
+4. Publishing goes through the `PublishingAdapter` seam so new targets are added without touching call sites (see [ADR-010](0010-publishing-integration-model.md)).
 
 ## Alternatives Considered
 
-- **Service-oriented from day one (Plan B)** — better scaling/parallelism, but multi-service CI/CD, distributed tracing, and local dev complexity before product-market fit. Rejected for v1; re-evaluation gate defined in [NFR §6](../specs/non-functional-requirements.md).
-- **Serverless functions** — great scaling story per-endpoint, but chunked uploads, long-running media jobs, and local dev parity add friction; cold starts conflict with NFR-P9. Rejected.
-- **Rails/Laravel/Django monolith** — productive, but splits the codebase across two languages (frontend TS) and weakens code sharing of contracts. Rejected on team skillset and contract-sharing grounds.
+- **Plan B: dedicated services from day one** (ingestion, analysis, composition, publishing) — stronger scaling and team parallelism, but far higher initial complexity and operational overhead for a single-user MVP. Rejected now; the boundary rules above keep the extraction path open.
+- **Unstructured monolith** — fastest to write, but cross-module table access and in-request processing would make the Plan A→B migration a rewrite. Rejected.
 
 ## Consequences
 
-- Positive: one deployable, one pipeline, trivial local dev; contracts shared as TypeScript types; extraction path to services preserved.
-- Negative / accepted risks: scaling is vertical + worker-count until extraction; discipline rules require enforcement to stay real.
-- Follow-ups: re-evaluate at end of Sprint 2 per the Plan A → Plan B gate (NFR §6); document contexts in [backend-architecture](../architecture/backend-architecture.md).
+- Positive: one process to run and test (`app.inject()`); low ops overhead; seams isolate every planned migration axis.
+- Negative / accepted risks: discipline is enforced by convention and review, not by the compiler or process boundaries.
+- Follow-ups / re-evaluation triggers: re-evaluate Plan B boundaries at the end of Sprint 2 using ingestion volume, AI job latency/failure rates, contributor concurrency, and publishing integration complexity. If two or more indicators exceed the NFR thresholds, open an ADR amendment adopting Plan B boundaries for the affected modules.

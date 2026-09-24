@@ -1,34 +1,30 @@
-# ADR-003: Database Strategy (Postgres + Object Storage)
+# ADR-003: Database & Storage Strategy (SQLite + Filesystem, Behind a Storage Seam)
 
-- **Status:** Proposed
+- **Status:** Accepted (amended from the PR #2 proposal of Postgres + S3)
 - **Date:** 2026-08-08
 - **Deciders:** Maintainers
-- **Related:** [feature-media-ingestion](../specs/feature-media-ingestion.md), [ADR-002](0002-backend-architecture.md), [ADR-005](0005-media-processing-pipeline.md), [data-model](../architecture/data-model.md)
+- **Related:** [ADR-002](0002-backend-architecture.md), [ADR-010](0010-publishing-integration-model.md), DECISIONS.md D2, D9
 
 ## Context
 
-ScreenStudy has two storage shapes: relational metadata (users, media, jobs, insights, sections, drafts, publications) and large binary artifacts (screenshots, recordings, audio). The job system needs atomic state transitions; the AI pipeline needs queryable structured output; uploads need durable, cheap binary storage.
+Media artifacts (screenshots, recordings, audio) and their metadata (insights, outlines, drafts, publish records) need durable storage. The PR #2 draft proposed Postgres + S3-style object storage. For a single-user, offline-capable local tool that must also run hermetically in CI, external services are pure cost with no benefit.
 
 ## Decision
 
-**PostgreSQL for all structured data; S3-compatible object storage for media binaries; the DB stores storage pointers (bucket/key), never binary blobs.**
+**Media files live on the local filesystem (`data/media/`); all structured data lives in SQLite via `better-sqlite3`. All file I/O goes through the `StorageService` interface (`src/server/services/storage.ts`), implemented by `LocalStorageService`. Routes and publishers never touch `fs` directly.**
 
-Details:
-
-- **Schema ownership:** each module owns its tables (ADR-002). Migrations via a versioned migration tool (node-pg-migrate or Drizzle — chosen at Sprint 1 start; either satisfies this ADR).
-- **Storage layout:** `s3://<bucket>/<env>/<user_id>/<media_id>/<original_filename>`; derived artifacts (thumbnails, transcripts) under `…/<media_id>/derived/`.
-- **Access pattern:** all object access through a `StorageService` interface (put/get/delete/signed-url). Media is served only via short-lived signed URLs (NFR-S2).
-- **Job state:** Postgres-backed job table (see ADR-005) — transactional enqueue alongside metadata writes keeps ingestion atomic.
-- **JSONB** for insight/analysis payloads with a versioned schema marker; normalized columns for anything queried (kind, confidence).
+- SQLite foreign keys + cascade deletes keep media/insights/sections consistent.
+- Data locations are configurable via `DATA_DIR`, `MEDIA_DIR`, and `PUBLISH_DIR`.
+- The `StorageService` seam (`save/read/copy/writeText/remove/exists`) is the boundary discipline required by [ADR-002](0002-backend-architecture.md) rule 3: swapping disk for S3 later is a new implementation, not a refactor of call sites.
 
 ## Alternatives Considered
 
-- **SQLite + local disk** — simplest possible; fails multi-worker concurrency and durability requirements (NFR-R4). Rejected beyond local dev.
-- **NoSQL document store** — flexible for AI payloads, but job state transitions and relational integrity (drafts ↔ sources ↔ media) are core. JSONB in Postgres covers the flexibility need. Rejected.
-- **Store blobs in Postgres (bytea/large objects)** — simplifies backups but bloats the DB, complicates streaming/range requests, and raises cost. Rejected.
+- **Postgres + S3 (PR #2 proposal)** — required for multi-user/cloud, but adds two external services, credentials, and network failure modes to a local tool. Rejected for the MVP; the storage seam preserves this as the migration target.
+- **SQLite for everything, including media blobs** — single-file simplicity, but bloats the DB, complicates backups, and prevents serving media with range requests. Rejected.
+- **Direct `fs` usage in routes** — simplest, but violates the ADR-002 boundary rules and makes the Plan A→B storage migration expensive. Rejected.
 
 ## Consequences
 
-- Positive: one relational store for correctness-critical state; cheap scalable binary storage; transactional outbox pattern available for events; easy local dev (Postgres + MinIO in docker-compose).
-- Negative / accepted risks: two storage systems to back up/restore consistently (runbook required — see [operations](../operations/runbooks.md)); signed-URL flow adds a hop.
-- Follow-ups: choose migration tool in Sprint 1; define backup/restore runbook before beta (NFR-R4).
+- Positive: zero external services — the app runs fully offline and in CI; SQLite is transactional and trivially handles this workload; the seam keeps the cloud migration cheap.
+- Negative / accepted risks: single-machine durability (no replication); local disk is the backup story.
+- Follow-ups / re-evaluation triggers: adopt Postgres + object storage when multi-user access or cloud deployment is needed (see DECISIONS.md D2 "Revisit if").

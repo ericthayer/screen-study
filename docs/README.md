@@ -50,20 +50,20 @@ Conventions:
 
 ## Required ADR Set
 
-ADRs were drafted up front and are revised as decisions evolve. Status key: **Proposed** (drafted, undecided) → **Accepted** (decided) → **Superseded** (replaced by a newer ADR).
+ADRs were drafted up front and revised during implementation. Status key: **Proposed** (drafted, undecided) → **Accepted** (decided) → **Superseded** (replaced by a newer ADR).
 
 | ADR | Decision | Status |
 |---|---|---|
-| [ADR-001](adr/0001-frontend-architecture.md) | Frontend architecture (SPA framework + component system) | Proposed |
-| [ADR-002](adr/0002-backend-architecture.md) | Backend architecture (monolith vs service-oriented) | Proposed |
-| [ADR-003](adr/0003-database-strategy.md) | Database strategy (Postgres schema + object storage model) | Proposed |
-| [ADR-004](adr/0004-ai-orchestration-pattern.md) | AI orchestration pattern (sync request vs async job pipeline) | Proposed |
-| [ADR-005](adr/0005-media-processing-pipeline.md) | Media processing pipeline and queue technology | Proposed |
-| [ADR-006](adr/0006-authn-authz-approach.md) | AuthN/AuthZ approach | Proposed |
-| [ADR-007](adr/0007-ci-cd-pipeline.md) | CI/CD pipeline and environment promotion model | Proposed |
-| [ADR-008](adr/0008-accessibility-compliance-target.md) | Accessibility compliance target (WCAG 2.2 AA baseline) | Proposed |
-| [ADR-009](adr/0009-performance-budgets-observability.md) | Performance budgets and observability standards | Proposed |
-| [ADR-010](adr/0010-publishing-integration-model.md) | Publishing integration model (static export vs API push) | Proposed |
+| [ADR-001](adr/0001-frontend-architecture.md) | Frontend architecture (React + Vite SPA) | Accepted |
+| [ADR-002](adr/0002-backend-architecture.md) | Backend architecture (modular monolith with boundary discipline) | Accepted |
+| [ADR-003](adr/0003-database-strategy.md) | Database and storage strategy (SQLite + filesystem behind a storage seam) | Accepted |
+| [ADR-004](adr/0004-ai-orchestration-pattern.md) | AI orchestration pattern (DB-polled async jobs) | Accepted |
+| [ADR-005](adr/0005-media-processing-pipeline.md) | Media processing pipeline | Accepted |
+| [ADR-006](adr/0006-authn-authz-approach.md) | AuthN/AuthZ approach | Deferred |
+| [ADR-007](adr/0007-ci-cd-pipeline.md) | CI/CD pipeline and validation gates | Accepted |
+| [ADR-008](adr/0008-accessibility-compliance-target.md) | Accessibility compliance target (WCAG 2.2 AA baseline) | Deferred |
+| [ADR-009](adr/0009-performance-budgets-observability.md) | Performance budgets and observability standards | Deferred |
+| [ADR-010](adr/0010-publishing-integration-model.md) | Publishing integration model (filesystem-first adapter seam) | Accepted |
 
 ## Delivery Plans
 

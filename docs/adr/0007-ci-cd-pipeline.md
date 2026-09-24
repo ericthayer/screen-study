@@ -1,41 +1,28 @@
-# ADR-007: CI/CD Pipeline & Environment Promotion Model
+# ADR-007: CI/CD Pipeline (PR Gates: Lint, Typecheck, Test, Build)
 
-- **Status:** Proposed
+- **Status:** Accepted (PR-gates portion; environment promotion model is not applicable to a local tool)
 - **Date:** 2026-08-08
 - **Deciders:** Maintainers
-- **Related:** [ci-cd](../operations/ci-cd.md), [ADR-009](0009-performance-budgets-observability.md), [ADR-008](0008-accessibility-compliance-target.md)
+- **Related:** DECISIONS.md D7
 
 ## Context
 
-Plan A needs one simple pipeline now that can grow into multi-service promotion (Plan B). Quality gates (a11y, performance budgets, security scans) must be enforced in CI, not by habit.
+The repo needs automated quality gates so regressions are caught before merge. The PR #2 plan proposed a full promotion model (PR gates → staging → tagged production); for a local single-user tool with no deployed environments, only the PR-gate portion applies.
 
 ## Decision
 
-**GitHub Actions, trunk-based development with PR gates and preview deploys; promotion model: PR preview → `main` auto-deploys to staging → tagged release promotes to production.**
+**Every PR runs four gates in GitHub Actions CI: `npm run lint` (ESLint flat config), `npm run typecheck` (`tsc`), `npm test` (Vitest unit + API pipeline tests), and `npm run build` (server bundle + Vite client build).**
 
-Pipeline stages (per PR):
-
-1. Lint + typecheck (frontend and backend)
-2. Unit + worker tests (recorded AI fixtures, no live calls)
-3. Contract tests (OpenAPI conformance, provider schemas)
-4. Build (Vite bundle + server), bundle-size budget check (NFR-P2)
-5. axe accessibility checks on key routes (NFR-A5)
-6. Security: dependency scan, secrets scan, CodeQL
-7. Preview deploy (ephemeral environment per PR)
-
-Promotion:
-
-- Merge to `main` → deploy to **staging** automatically; E2E suite runs against staging.
-- Tag (`v*`) → manual-approval deploy to **production**; rollback = redeploy previous tag (see [runbooks](../operations/runbooks.md)).
+- Tests are hermetic: they use the offline `local` AI provider and temp data directories, so CI needs no secrets or network access (per ADR-005).
+- There are no staging/production environments to promote to; releasing is publishing artifacts to `PUBLISH_DIR` from a running instance (see ADR-010).
 
 ## Alternatives Considered
 
-- **GitFlow / release branches** — ceremony without payoff at this team size. Rejected.
-- **Continuous deploy to production on every merge** — attractive, but beta users deserve a soak window on staging; manual gate stays until SLOs exist (Sprint 5 revisit).
-- **CircleCI/Buildkite** — fine tools; Actions is native to where the code lives and free for this scale. Rejected.
+- **Full staged promotion (PR #2 proposal)** — staging/prod environments don't exist for a local tool. Deferred until (if ever) the app is hosted.
+- **Fewer gates (tests only)** — type errors and build breakage would slip through; the four commands are fast enough that gating on all of them is cheap. Rejected.
 
 ## Consequences
 
-- Positive: every PR is deployable and audited; quality gates are mechanical; promotion model extends to Plan B by adding service-scoped workflows.
-- Negative / accepted risks: preview environments need seeded fixtures (Sprint 1 task); staging↔prod parity must be maintained.
-- Follow-ups: branch protections and CI skeleton land in Sprint 0; E2E suite in Sprint 4; SLO-gated auto-promotion reconsidered in Sprint 5.
+- Positive: regressions in lint, types, tests, or build block merge; CI is fully offline and reproducible.
+- Negative / accepted risks: no deployment automation (none needed); no accessibility or performance gates yet — those land with ADR-008/ADR-009 work.
+- Follow-ups: add axe-based accessibility CI with the Sprint 4 accessibility hardening (ADR-008); add performance budget checks with the Sprint 2/5 observability work (ADR-009).

@@ -20,20 +20,55 @@ Keeping a consistent record of your work is valuable but time-consuming. ScreenS
 
 ## Status
 
-Early-stage / work in progress. The tech stack and publishing platform are pending decision — see [ADR-001](docs/adr/0001-frontend-architecture.md) and [ADR-010](docs/adr/0010-publishing-integration-model.md).
+Early-stage / work in progress. The core pipeline is implemented end to end: upload → analyze → organize → draft → publish. See [DECISIONS.md](./DECISIONS.md) for the chosen stack and architecture.
 
 ## Documentation
 
-ScreenStudy uses a **spec-driven development (SDD)** approach: every feature starts from an approved spec, decisions are recorded as ADRs, and each change is traceable from spec → ADR → tasks → tests → release note.
+ScreenStudy uses a spec-driven approach: product and feature requirements live under [`docs/specs/`](docs/specs/), architecture decisions live under [`docs/adr/`](docs/adr/), and supporting system design, quality, and operations docs live in the [`docs/`](docs/) hub.
 
-- [Docs hub & SDD framework](docs/README.md) — spec gate, traceability, delivery plan
-- [Specs](docs/specs/) — PRD, per-feature functional specs, non-functional requirements
-- [ADRs](docs/adr/) — architecture decision records (ADR-001 … ADR-010)
-- [Architecture](docs/architecture/) — system overview, frontend/backend architecture, data model, sequence diagrams
-- [Quality](docs/quality/) — accessibility (WCAG 2.2 AA), performance budgets, security threat model
-- [Operations](docs/operations/) — CI/CD flow, runbooks, incident response
+- [Docs hub](docs/README.md)
+- [Feature specs](docs/specs/)
+- [Architecture Decision Records](docs/adr/)
+- [System architecture](docs/architecture/)
+- [Quality docs](docs/quality/)
+- [Operations docs](docs/operations/)
 
-**Delivery plan:** Plan A — “MVP Monolith First” (Sprints 0–5), with modular boundary discipline so migration to a modular/service architecture stays low-risk. See [docs/README.md](docs/README.md) for the full plan and the Sprint 2 re-evaluation criteria.
+## Getting Started
+
+Requires Node.js 20+.
+
+```bash
+npm install
+npm run dev        # API server on :3000
+npm run dev:web    # web client on :5173 (proxies API/media to :3000)
+```
+
+Production build:
+
+```bash
+npm run build
+npm start          # serves API + built web client on :3000
+```
+
+### AI providers
+
+The app works out of the box with the offline `local` provider (placeholder insights + template articles). For real AI analysis, set one of:
+
+```bash
+export ANTHROPIC_API_KEY=...   # vision analysis + article generation
+export OPENAI_API_KEY=...      # vision analysis + Whisper transcription + article generation
+export AI_PROVIDER=anthropic   # optional; auto-detected from keys
+```
+
+### Development
+
+```bash
+npm test           # Vitest (unit + API pipeline tests)
+npm run lint
+npm run typecheck
+```
+
+Data (SQLite DB, uploaded media, published articles) lives in `./data` by default; override with `DATA_DIR`, `MEDIA_DIR`, and `PUBLISH_DIR`.
 
 ## Contributing
 
