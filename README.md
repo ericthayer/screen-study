@@ -22,6 +22,17 @@ Keeping a consistent record of your work is valuable but time-consuming. ScreenS
 
 Early-stage / work in progress. The core pipeline is implemented end to end: upload → analyze → organize → draft → publish. See [DECISIONS.md](./DECISIONS.md) for the chosen stack and architecture.
 
+## Documentation
+
+ScreenStudy uses a spec-driven approach: product and feature requirements live under [`docs/specs/`](docs/specs/), architecture decisions live under [`docs/adr/`](docs/adr/), and supporting system design, quality, and operations docs live in the [`docs/`](docs/) hub.
+
+- [Docs hub](docs/README.md)
+- [Feature specs](docs/specs/)
+- [Architecture Decision Records](docs/adr/)
+- [System architecture](docs/architecture/)
+- [Quality docs](docs/quality/)
+- [Operations docs](docs/operations/)
+
 ## Getting Started
 
 Requires Node.js 20+.
