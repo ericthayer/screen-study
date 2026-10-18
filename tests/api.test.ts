@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/server/app.js';
 import type { AppContext } from '../src/server/context.js';
+import { JobRunner } from '../src/server/services/jobs.js';
 
 const PNG_1PX = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
@@ -380,5 +381,42 @@ describe('ScreenStudy API (end-to-end pipeline)', () => {
     expect(bad.statusCode).toBe(400);
     const ok = await app.inject({ method: 'PATCH', url: `/api/drafts/${draft.id}`, payload: { status: 'review' } });
     expect(ok.json().draft.status).toBe('review');
+  });
+
+  it('propagates request IDs from the API to jobs and job logs (NFR-O1)', async () => {
+    const mediaId = await uploadPng();
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/media/${mediaId}/analyze`,
+      headers: { 'x-request-id': 'trace-abc-123' },
+    });
+    expect(res.headers['x-request-id']).toBe('trace-abc-123');
+    expect(res.json().job.correlationId).toBe('trace-abc-123');
+
+    const lines: { level: string; obj: Record<string, unknown>; msg: string }[] = [];
+    const capture = (level: string) => (obj: Record<string, unknown>, msg: string) =>
+      lines.push({ level, obj, msg });
+    const c = ctx(app);
+    const runner = new JobRunner(c.db, c.ai, c.storage, 50, {
+      info: capture('info'),
+      warn: capture('warn'),
+      error: capture('error'),
+    });
+    await runner.drain();
+    expect(lines.map((l) => l.msg)).toEqual(['job started', 'job succeeded']);
+    expect(lines[1].obj).toMatchObject({ correlationId: 'trace-abc-123', kind: 'analysis', attempt: 1 });
+    expect(typeof lines[1].obj.durationMs).toBe('number');
+  });
+
+  it('generates a request ID when the incoming one is missing or unsafe', async () => {
+    const plain = await app.inject({ method: 'GET', url: '/api/health' });
+    expect(plain.headers['x-request-id']).toMatch(/^[0-9a-f-]{36}$/);
+    const unsafe = await app.inject({
+      method: 'GET',
+      url: '/api/health',
+      headers: { 'x-request-id': 'bad id with spaces' },
+    });
+    expect(unsafe.headers['x-request-id']).not.toBe('bad id with spaces');
+    expect(unsafe.headers['x-request-id']).toMatch(/^[0-9a-f-]{36}$/);
   });
 });

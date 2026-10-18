@@ -105,6 +105,7 @@ CREATE TABLE IF NOT EXISTS analysis_jobs (
   max_attempts INTEGER NOT NULL DEFAULT 3,
   run_at TEXT NOT NULL DEFAULT (datetime('now')),
   error TEXT,
+  correlation_id TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -119,6 +120,7 @@ const MIGRATIONS = [
   `ALTER TABLE analysis_jobs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0`,
   `ALTER TABLE analysis_jobs ADD COLUMN max_attempts INTEGER NOT NULL DEFAULT 3`,
   `ALTER TABLE analysis_jobs ADD COLUMN run_at TEXT NOT NULL DEFAULT (datetime('now'))`,
+  `ALTER TABLE analysis_jobs ADD COLUMN correlation_id TEXT`,
 ];
 
 interface MediaRow {
@@ -200,6 +202,7 @@ interface JobRow {
   max_attempts: number;
   run_at: string;
   error: string | null;
+  correlation_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -216,6 +219,7 @@ function rowToJob(row: JobRow): AnalysisJob {
     maxAttempts: row.max_attempts,
     runAt: row.run_at,
     error: row.error,
+    correlationId: row.correlation_id ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -647,12 +651,12 @@ export class ScreenStudyDb {
 
   // ---- Jobs (analysis & draft generation) ----
 
-  createAnalysisJob(mediaId: string): AnalysisJob {
-    return this.createJob({ kind: 'analysis', mediaId });
+  createAnalysisJob(mediaId: string, correlationId?: string | null): AnalysisJob {
+    return this.createJob({ kind: 'analysis', mediaId, correlationId });
   }
 
-  createDraftJob(caseStudyId: string): AnalysisJob {
-    return this.createJob({ kind: 'draft', caseStudyId });
+  createDraftJob(caseStudyId: string, correlationId?: string | null): AnalysisJob {
+    return this.createJob({ kind: 'draft', caseStudyId, correlationId });
   }
 
   private createJob(input: {
@@ -661,12 +665,13 @@ export class ScreenStudyDb {
     caseStudyId?: string;
     maxAttempts?: number;
     runAt?: string;
+    correlationId?: string | null;
   }): AnalysisJob {
     const id = randomUUID();
     this.db
       .prepare(
-        `INSERT INTO analysis_jobs (id, kind, media_id, case_study_id, max_attempts, run_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO analysis_jobs (id, kind, media_id, case_study_id, max_attempts, run_at, correlation_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -675,6 +680,7 @@ export class ScreenStudyDb {
         input.caseStudyId ?? null,
         input.maxAttempts ?? 3,
         input.runAt ?? new Date().toISOString(),
+        input.correlationId ?? null,
       );
     return this.getAnalysisJob(id)!;
   }
@@ -717,7 +723,7 @@ export class ScreenStudyDb {
             .get() as { id: string } | undefined)
         : (this.db
             .prepare(
-              `SELECT id FROM analysis_jobs WHERE status = 'pending' AND run_at <= ?
+              `SELECT id FROM analysis_jobs WHERE status = 'pending' AND julianday(run_at) <= julianday(?)
                ORDER BY created_at ASC LIMIT 1`,
             )
             .get(now) as { id: string } | undefined);

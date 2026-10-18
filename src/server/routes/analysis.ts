@@ -7,7 +7,7 @@ export function registerAnalysisRoutes(app: FastifyInstance, ctx: AppContext): v
   app.post<{ Params: { id: string } }>('/media/:id/analyze', async (request, reply) => {
     const media = ctx.db.getMediaItem(request.params.id);
     if (!media) return reply.status(404).send({ error: 'Not found' });
-    const job = ctx.db.createAnalysisJob(media.id);
+    const job = ctx.db.createAnalysisJob(media.id, request.id);
     return reply.status(202).send({ job });
   });
 
@@ -29,7 +29,7 @@ export function registerAnalysisRoutes(app: FastifyInstance, ctx: AppContext): v
     const jobs = [];
     for (const id of ids) {
       if (!ctx.db.getMediaItem(id)) continue;
-      jobs.push(ctx.db.createAnalysisJob(id));
+      jobs.push(ctx.db.createAnalysisJob(id, request.id));
     }
     return reply.status(202).send({ jobs });
   });
@@ -58,9 +58,9 @@ export function registerAnalysisRoutes(app: FastifyInstance, ctx: AppContext): v
     // Requeue the same kind of work the failed job represented.
     const retried =
       job.kind === 'draft' && job.caseStudyId
-        ? ctx.db.createDraftJob(job.caseStudyId)
+        ? ctx.db.createDraftJob(job.caseStudyId, request.id)
         : job.kind === 'analysis' && job.mediaId
-          ? ctx.db.createAnalysisJob(job.mediaId)
+          ? ctx.db.createAnalysisJob(job.mediaId, request.id)
           : null;
     if (!retried) return reply.status(409).send({ error: 'Job target no longer exists' });
     return reply.status(202).send({ job: retried });

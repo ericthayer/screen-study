@@ -116,6 +116,8 @@ export interface AnalysisJob {
   maxAttempts: number;
   runAt: string;
   error: string | null;
+  /** Request ID of the API call that enqueued the job (NFR-O1 correlation). */
+  correlationId: string | null;
   createdAt: string;
   updatedAt: string;
 }

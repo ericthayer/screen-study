@@ -14,7 +14,7 @@ export function registerDraftRoutes(app: FastifyInstance, ctx: AppContext): void
     async (request, reply) => {
       const study = ctx.db.getCaseStudy(request.params.id);
       if (!study) return reply.status(404).send({ error: 'Not found' });
-      const job = ctx.db.createDraftJob(study.id);
+      const job = ctx.db.createDraftJob(study.id, request.id);
       return reply.status(202).send({ job });
     },
   );

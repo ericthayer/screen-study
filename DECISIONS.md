@@ -92,12 +92,20 @@ analysis_jobs    batch analysis progress/error tracking
 
 **Decision:** The canonical surface stays `/api/…` (used by the bundled web client); the same routes are also mounted under `/api/v1/…` to match the PR #2 feature-spec contract. Both spellings coexist during the MVP.
 
+## D12 — Correlation IDs across API → job → worker logs (ADR-009 amendment)
+
+**Decision:** Each request gets an `x-request-id` (a safe incoming value is reused, else a UUID), echoed on the response and bound to Fastify's JSON request logs. Routes that enqueue work store it on the job (`analysis_jobs.correlation_id`), and the `JobRunner` logs structured lifecycle events carrying it, so a failing job can be traced back to the request that created it.
+
+**Rationale:** Delivers the cheapest, highest-value slice of NFR-O1 with the logger already in place (pino via Fastify) — no telemetry dependencies.
+
+**Revisit if:** OTel tracing lands (the correlation ID becomes/links to the trace ID).
+
 ## Explicitly deferred (tracked, target sprint)
 
 Per the PR #2 plan, the following are intentionally **not** in this MVP and are deferred to the noted sprint:
 
 - **Authentication / per-user authorization** (ADR-006, NFR-S1) — single-user local tool by design (D2); no `users` table. *Target: when multi-user hosting is needed.*
-- **Observability** (ADR-009, NFR-O1/O2) — no structured logging/correlation IDs, OTel traces, or token/cost logging yet. *Target: Sprint 2 (OTel) / Sprint 5 (alerts).*
+- **Observability** (ADR-009, NFR-O1/O2) — correlation IDs (`x-request-id` → `analysis_jobs.correlation_id`) and structured job lifecycle logs now ship (D12); OTel traces, metrics, and token/cost logging are still deferred. *Target: Sprint 2 (OTel) / Sprint 5 (alerts).*
 - **Accessibility hardening** (ADR-008, NFR-A1–A5) — no Radix/axe CI/manual audit yet; the review dialog ships focus + Esc handling only. *Target: Sprint 4.*
 - **Chunked/resumable upload** (FR-ING-03) — whole-file multipart with a 500MB cap; no upload sessions. *Target: when >500MB recordings are common.*
 - **Malware scanning** (FR-ING-05, NFR-S2) — beyond signature sniffing. *Target: with storage backend.*
