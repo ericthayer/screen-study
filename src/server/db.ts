@@ -472,6 +472,14 @@ export class ScreenStudyDb {
     return this.getSections(caseStudyId).find((s) => s.sectionKey === key) ?? null;
   }
 
+  getSection(sectionId: string): CaseStudySection | null {
+    const row = this.db
+      .prepare('SELECT case_study_id FROM case_study_sections WHERE id = ?')
+      .get(sectionId) as { case_study_id: string } | undefined;
+    if (!row) return null;
+    return this.getSections(row.case_study_id).find((s) => s.id === sectionId) ?? null;
+  }
+
   renameSection(sectionId: string, title: string): void {
     this.db
       .prepare('UPDATE case_study_sections SET title = ? WHERE id = ?')
@@ -744,7 +752,7 @@ export class ScreenStudyDb {
       .prepare(
         `UPDATE analysis_jobs SET status = 'pending', error = 'Worker restarted while running',
            updated_at = datetime('now')
-         WHERE status = 'running' AND updated_at < ?`,
+         WHERE status = 'running' AND julianday(updated_at) < julianday(?)`,
       )
       .run(cutoff);
     return result.changes;

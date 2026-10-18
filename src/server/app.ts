@@ -36,7 +36,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     db,
     ai,
     storage,
-    publisher: new FilesystemPublisher(storage),
+    publisher: new FilesystemPublisher(storage, new LocalStorageService(config.publishDir)),
     jobs: new JobRunner(db, ai, storage, config.jobPollMs),
   };
 

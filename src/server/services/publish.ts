@@ -28,7 +28,7 @@ export interface PublishingAdapter {
   render(db: ScreenStudyDb, draftId: string): PublishBundle;
   /** Like publish, but writes nothing — returns the bundle for preview. */
   dryRun(db: ScreenStudyDb, draftId: string): PublishBundle;
-  publish(db: ScreenStudyDb, draftId: string): AdapterResult;
+  publish(db: ScreenStudyDb, draftId: string): Promise<AdapterResult>;
   retract(record: PublishRecord): void;
 }
 
@@ -41,7 +41,14 @@ export interface PublishingAdapter {
 export class FilesystemPublisher implements PublishingAdapter {
   readonly target = 'filesystem';
 
-  constructor(private storage: StorageService) {}
+  /**
+   * @param media storage holding uploaded media (read-only here)
+   * @param output storage rooted at PUBLISH_DIR where articles are written
+   */
+  constructor(
+    private media: StorageService,
+    private output: StorageService,
+  ) {}
 
   render(db: ScreenStudyDb, draftId: string): PublishBundle {
     const draft = db.getDraft(draftId);
@@ -54,7 +61,7 @@ export class FilesystemPublisher implements PublishingAdapter {
     for (const section of sections) {
       for (const mediaId of section.mediaIds) {
         const media = db.getMediaItem(mediaId);
-        if (!media || !this.storage.exists(media.filename)) continue;
+        if (!media || !this.media.exists(media.filename)) continue;
         mediaKeys.push(media.filename);
         markdown = markdown
           .split(`**${media.originalName}**`)
@@ -69,30 +76,30 @@ export class FilesystemPublisher implements PublishingAdapter {
     return this.render(db, draftId);
   }
 
-  publish(db: ScreenStudyDb, draftId: string): AdapterResult {
+  async publish(db: ScreenStudyDb, draftId: string): Promise<AdapterResult> {
     const bundle = this.render(db, draftId);
     const prefix = bundle.slug;
 
-    this.storage.deleteDir(prefix);
+    this.output.deleteDir(prefix);
     for (const key of bundle.mediaKeys) {
-      this.storage.copy(key, path.posix.join(prefix, key));
+      await this.output.save(path.posix.join(prefix, key), this.media.createReadStream(key));
     }
     // Mark as published in frontmatter.
-    this.storage.writeText(
+    this.output.writeText(
       path.posix.join(prefix, 'index.md'),
       bundle.markdown.replace(/^draft: true$/m, 'draft: false'),
     );
 
     // Return the absolute published directory as the location so operators can
     // find the output on disk; retract() resolves it back to the storage key.
-    return { location: this.storage.absolutePath(prefix) ?? prefix };
+    return { location: this.output.absolutePath(prefix) ?? prefix };
   }
 
   retract(record: PublishRecord): void {
     if (record.status === 'published' && record.path) {
       // record.path is the absolute directory returned by publish(); the slug
       // (last segment) is the storage key.
-      this.storage.deleteDir(path.basename(record.path));
+      this.output.deleteDir(path.basename(record.path));
     }
   }
 }

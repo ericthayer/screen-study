@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/server/app.js';
-import type { JobRunner } from '../src/server/services/jobs.js';
+import type { AppContext } from '../src/server/context.js';
 
 const PNG_1PX = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
@@ -13,7 +13,7 @@ const PNG_1PX = Buffer.from(
 
 /** Access the app context (decorated by buildApp for tests/operations). */
 function ctx(app: FastifyInstance) {
-  return (app as unknown as { ctx: { jobs: JobRunner } }).ctx;
+  return (app as unknown as { ctx: AppContext }).ctx;
 }
 
 describe('ScreenStudy API (end-to-end pipeline)', () => {
@@ -180,8 +180,13 @@ describe('ScreenStudy API (end-to-end pipeline)', () => {
     expect(pub.statusCode).toBe(201);
     const record = pub.json().record;
     expect(record.status).toBe('published');
+    // Output lands in PUBLISH_DIR (not the publicly served media dir) with media copied alongside.
+    expect(record.path).toBe(path.join(dataDir, 'published', 'checkout-redesign'));
+    expect(existsSync(path.join(dataDir, 'media', 'checkout-redesign'))).toBe(false);
     const articlePath = path.join(record.path as string, 'index.md');
     expect(existsSync(articlePath)).toBe(true);
+    const mediaFilename = analyzed.json().item.filename as string;
+    expect(existsSync(path.join(record.path as string, mediaFilename))).toBe(true);
     expect(readFileSync(articlePath, 'utf8')).toContain('draft: false');
 
     // Unpublish removes the output.
@@ -311,5 +316,69 @@ describe('ScreenStudy API (end-to-end pipeline)', () => {
     expect(dry.json().target).toBe('filesystem');
     expect(dry.json().bundle.slug).toBe('dry-run-study');
     expect(existsSync(path.join(dataDir, 'published', 'dry-run-study'))).toBe(false);
+  });
+
+  it('retries a failed draft-generation job as a draft job', async () => {
+    const cs = await app.inject({ method: 'POST', url: '/api/case-studies', payload: { title: 'Retry' } });
+    const caseStudyId = cs.json().caseStudy.id as string;
+    const original = ctx(app).ai.generateArticle;
+    ctx(app).ai.generateArticle = async () => {
+      throw new Error('provider down');
+    };
+    const job = (await app.inject({ method: 'POST', url: `/api/case-studies/${caseStudyId}/generate` })).json()
+      .job;
+    for (let i = 0; i < 3; i++) await ctx(app).jobs.drain(200, true);
+    const failed = (await app.inject({ method: 'GET', url: `/api/analysis/jobs/${job.id}` })).json().job;
+    expect(failed.status).toBe('failed');
+    expect(failed.error).toBe('provider down');
+
+    ctx(app).ai.generateArticle = original;
+    const retry = await app.inject({ method: 'POST', url: `/api/analysis/jobs/${job.id}/retry` });
+    expect(retry.statusCode).toBe(202);
+    expect(retry.json().job).toMatchObject({ kind: 'draft', caseStudyId, status: 'pending' });
+    await ctx(app).jobs.drain();
+    const done = (await app.inject({ method: 'GET', url: `/api/analysis/jobs/${retry.json().job.id}` })).json()
+      .job;
+    expect(done.status).toBe('done');
+    expect(done.draftId).toBeTruthy();
+  });
+
+  it('only requeues running jobs older than the stale threshold', async () => {
+    const mediaId = await uploadPng();
+    await app.inject({ method: 'POST', url: `/api/media/${mediaId}/analyze` });
+    const claimed = ctx(app).db.claimNextJob();
+    expect(claimed?.status).toBe('running');
+    // Just claimed: not stale yet.
+    expect(ctx(app).db.requeueStaleJobs(60)).toBe(0);
+    // A cutoff in the future treats it as stale.
+    expect(ctx(app).db.requeueStaleJobs(-120)).toBe(1);
+    expect(ctx(app).db.getAnalysisJob(claimed!.id)?.status).toBe('pending');
+  });
+
+  it('returns 404 for unknown sections', async () => {
+    const mediaId = await uploadPng();
+    const missing = '00000000-0000-0000-0000-000000000000';
+    const rename = await app.inject({ method: 'PATCH', url: `/api/sections/${missing}`, payload: { title: 'X' } });
+    expect(rename.statusCode).toBe(404);
+    const assign = await app.inject({ method: 'PUT', url: `/api/sections/${missing}/media/${mediaId}` });
+    expect(assign.statusCode).toBe(404);
+    const unassign = await app.inject({ method: 'DELETE', url: `/api/sections/${missing}/media/${mediaId}` });
+    expect(unassign.statusCode).toBe(404);
+  });
+
+  it('validates request bodies with 400s instead of server errors', async () => {
+    const batch = await app.inject({ method: 'POST', url: '/api/analysis/batch', payload: { mediaIds: 'abc' } });
+    expect(batch.statusCode).toBe(400);
+
+    const cs = await app.inject({ method: 'POST', url: '/api/case-studies', payload: { title: 'Validate' } });
+    const caseStudyId = cs.json().caseStudy.id as string;
+    await app.inject({ method: 'POST', url: `/api/case-studies/${caseStudyId}/generate` });
+    await ctx(app).jobs.drain();
+    const [draft] = (await app.inject({ method: 'GET', url: `/api/case-studies/${caseStudyId}/drafts` })).json()
+      .drafts;
+    const bad = await app.inject({ method: 'PATCH', url: `/api/drafts/${draft.id}`, payload: { status: 'bogus' } });
+    expect(bad.statusCode).toBe(400);
+    const ok = await app.inject({ method: 'PATCH', url: `/api/drafts/${draft.id}`, payload: { status: 'review' } });
+    expect(ok.json().draft.status).toBe('review');
   });
 });

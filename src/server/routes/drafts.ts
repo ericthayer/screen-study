@@ -1,5 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import type { AppContext } from '../context.js';
+import type { DraftStatus } from '../../shared/types.js';
+
+const DRAFT_STATUSES: DraftStatus[] = ['draft', 'review', 'published'];
 
 export function registerDraftRoutes(app: FastifyInstance, ctx: AppContext): void {
   // Draft generation for a case study. Generation is a multi-second AI call,
@@ -48,6 +51,16 @@ export function registerDraftRoutes(app: FastifyInstance, ctx: AppContext): void
   }>('/drafts/:id', async (request, reply) => {
     const draft = ctx.db.getDraft(request.params.id);
     if (!draft) return reply.status(404).send({ error: 'Not found' });
+    const { title, markdown, status } = request.body ?? {};
+    if (
+      (title !== undefined && typeof title !== 'string') ||
+      (markdown !== undefined && typeof markdown !== 'string') ||
+      (status !== undefined && !DRAFT_STATUSES.includes(status))
+    ) {
+      return reply
+        .status(400)
+        .send({ error: `title/markdown must be strings; status must be one of ${DRAFT_STATUSES.join(', ')}` });
+    }
     if (request.body?.markdown && request.body.markdown !== draft.markdown) {
       const next = ctx.db.createDraft({
         caseStudyId: draft.caseStudyId,
@@ -67,7 +80,7 @@ export function registerDraftRoutes(app: FastifyInstance, ctx: AppContext): void
     const draft = ctx.db.getDraft(request.params.id);
     if (!draft) return reply.status(404).send({ error: 'Not found' });
     try {
-      const result = ctx.publisher.publish(ctx.db, draft.id);
+      const result = await ctx.publisher.publish(ctx.db, draft.id);
       const record = ctx.db.createPublishRecord({
         draftId: draft.id,
         target: ctx.publisher.target,

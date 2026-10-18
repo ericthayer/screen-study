@@ -12,9 +12,16 @@ export function registerAnalysisRoutes(app: FastifyInstance, ctx: AppContext): v
   });
 
   // Batch analyze: all uploaded (not yet analyzed) items, or an explicit list of ids.
-  app.post<{ Body: { mediaIds?: string[] } }>('/analysis/batch', async (request, reply) => {
+  app.post<{ Body: { mediaIds?: unknown } }>('/analysis/batch', async (request, reply) => {
+    const requested = request.body?.mediaIds;
+    if (
+      requested !== undefined &&
+      (!Array.isArray(requested) || !requested.every((id) => typeof id === 'string'))
+    ) {
+      return reply.status(400).send({ error: 'mediaIds must be an array of strings' });
+    }
     const ids =
-      request.body?.mediaIds ??
+      (requested as string[] | undefined) ??
       ctx.db
         .listMediaItems()
         .filter((m) => m.status === 'uploaded')
@@ -48,7 +55,14 @@ export function registerAnalysisRoutes(app: FastifyInstance, ctx: AppContext): v
     if (job.status !== 'failed') {
       return reply.status(409).send({ error: `Job is ${job.status}; only failed jobs can be retried` });
     }
-    const retried = ctx.db.createAnalysisJob(job.mediaId!);
+    // Requeue the same kind of work the failed job represented.
+    const retried =
+      job.kind === 'draft' && job.caseStudyId
+        ? ctx.db.createDraftJob(job.caseStudyId)
+        : job.kind === 'analysis' && job.mediaId
+          ? ctx.db.createAnalysisJob(job.mediaId)
+          : null;
+    if (!retried) return reply.status(409).send({ error: 'Job target no longer exists' });
     return reply.status(202).send({ job: retried });
   });
 
