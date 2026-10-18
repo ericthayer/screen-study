@@ -1,6 +1,6 @@
 # ADR-009: Performance Budgets and Observability Standards
 
-- **Status:** Deferred — *Target: Sprint 2 (OpenTelemetry traces) / Sprint 5 (dashboards & alerts)*
+- **Status:** Deferred (partially implemented — correlation IDs + structured job logs, amended 2026-10-18) — *Target: Sprint 2 (OpenTelemetry traces) / Sprint 5 (dashboards & alerts)*
 - **Date:** 2026-08-08
 - **Deciders:** Maintainers
 - **Related:** [ADR-004](0004-ai-orchestration-pattern.md), [ADR-007](0007-ci-cd-pipeline.md), DECISIONS.md "Explicitly deferred"
@@ -12,6 +12,13 @@ The PR #2 plan called for structured logging with correlation IDs, OpenTelemetry
 ## Decision
 
 **No structured logging, correlation IDs, OTel traces, metrics, or token/cost logging in the MVP.** Operational visibility comes from the `analysis_jobs` table (status, attempts, error messages) and the dry-run/retry endpoints. Performance budgets are not yet enforced in CI.
+
+### Amendment (2026-10-18): correlation IDs and structured job logs (NFR-O1 slice)
+
+- Every API response carries an `x-request-id` header. A well-formed incoming `x-request-id` (`[A-Za-z0-9._:-]{1,128}`) is reused; otherwise a UUID is generated. Fastify's pino logger (JSON) binds it to request logs as `reqId`.
+- Enqueued jobs persist the originating request ID in `analysis_jobs.correlation_id` (exposed as `correlationId`).
+- The `JobRunner` emits structured lifecycle logs (`job started`, `job succeeded`, `job failed; retry scheduled`, `job failed permanently`, `requeued stale jobs on startup`) with `jobId`, `kind`, `attempt`, `maxAttempts`, `correlationId`, `mediaId`/`caseStudyId`, `durationMs`, and `error`.
+- Still deferred: OTel traces, metrics (NFR-O2), token/cost logging, dashboards and alerting.
 
 ## Alternatives Considered
 

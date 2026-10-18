@@ -7,14 +7,21 @@ export function registerAnalysisRoutes(app: FastifyInstance, ctx: AppContext): v
   app.post<{ Params: { id: string } }>('/media/:id/analyze', async (request, reply) => {
     const media = ctx.db.getMediaItem(request.params.id);
     if (!media) return reply.status(404).send({ error: 'Not found' });
-    const job = ctx.db.createAnalysisJob(media.id);
+    const job = ctx.db.createAnalysisJob(media.id, request.id);
     return reply.status(202).send({ job });
   });
 
   // Batch analyze: all uploaded (not yet analyzed) items, or an explicit list of ids.
-  app.post<{ Body: { mediaIds?: string[] } }>('/analysis/batch', async (request, reply) => {
+  app.post<{ Body: { mediaIds?: unknown } }>('/analysis/batch', async (request, reply) => {
+    const requested = request.body?.mediaIds;
+    if (
+      requested !== undefined &&
+      (!Array.isArray(requested) || !requested.every((id) => typeof id === 'string'))
+    ) {
+      return reply.status(400).send({ error: 'mediaIds must be an array of strings' });
+    }
     const ids =
-      request.body?.mediaIds ??
+      (requested as string[] | undefined) ??
       ctx.db
         .listMediaItems()
         .filter((m) => m.status === 'uploaded')
@@ -22,7 +29,7 @@ export function registerAnalysisRoutes(app: FastifyInstance, ctx: AppContext): v
     const jobs = [];
     for (const id of ids) {
       if (!ctx.db.getMediaItem(id)) continue;
-      jobs.push(ctx.db.createAnalysisJob(id));
+      jobs.push(ctx.db.createAnalysisJob(id, request.id));
     }
     return reply.status(202).send({ jobs });
   });
@@ -48,7 +55,14 @@ export function registerAnalysisRoutes(app: FastifyInstance, ctx: AppContext): v
     if (job.status !== 'failed') {
       return reply.status(409).send({ error: `Job is ${job.status}; only failed jobs can be retried` });
     }
-    const retried = ctx.db.createAnalysisJob(job.mediaId!);
+    // Requeue the same kind of work the failed job represented.
+    const retried =
+      job.kind === 'draft' && job.caseStudyId
+        ? ctx.db.createDraftJob(job.caseStudyId, request.id)
+        : job.kind === 'analysis' && job.mediaId
+          ? ctx.db.createAnalysisJob(job.mediaId, request.id)
+          : null;
+    if (!retried) return reply.status(409).send({ error: 'Job target no longer exists' });
     return reply.status(202).send({ job: retried });
   });
 

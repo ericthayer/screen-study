@@ -92,14 +92,33 @@ analysis_jobs    batch analysis progress/error tracking
 
 **Decision:** The canonical surface stays `/api/…` (used by the bundled web client); the same routes are also mounted under `/api/v1/…` to match the PR #2 feature-spec contract. Both spellings coexist during the MVP.
 
+## D12 — Correlation IDs across API → job → worker logs (ADR-009 amendment)
+
+**Decision:** Each request gets an `x-request-id` (a safe incoming value is reused, else a UUID), echoed on the response and bound to Fastify's JSON request logs. Routes that enqueue work store it on the job (`analysis_jobs.correlation_id`), and the `JobRunner` logs structured lifecycle events carrying it, so a failing job can be traced back to the request that created it.
+
+**Rationale:** Delivers the cheapest, highest-value slice of NFR-O1 with the logger already in place (pino via Fastify) — no telemetry dependencies.
+
+**Revisit if:** OTel tracing lands (the correlation ID becomes/links to the trace ID).
+
+## D13 — Deterministic quality gates: outline rubric, draft groundedness, bundle validation
+
+**Decision:** Three deterministic checks gate the pipeline:
+- **Outline rubric (AC-ORG-05)** — `reviewOutline` in `services/organize.ts` flags an outline as `review.needsReview` when no media is assigned, fewer than 2 sections have media, or more than half of the assigned media lack insights. `POST /case-studies/:id/generate` returns **409** with the reasons unless the body sets `acknowledgeReview: true`.
+- **Groundedness (AC-GEN-04)** — `assessGroundedness` in `services/article.ts` checks the draft's `**filename**` references against the case study's media: the draft must reference at least 50% of them and no unknown media filenames (bold tokens with a media extension; names like **Next.js** are ignored). Results are returned on `GET /drafts/:id` and dry-run; `POST /drafts/:id/publish` returns **409** for ungrounded drafts. Fixing requires editing the draft (a new version), so the gate is "disabled until resolved".
+- **Bundle validation (AC-PUB-01)** — `validateBundle` in `services/publish.ts` checks frontmatter (`title`, `date` as YYYY-MM-DD, `draft`), that every `./file` image is included in the bundle, and that images have non-empty alt text. Dry-run reports `issues`; publish returns **422** when any exist.
+
+**Rationale:** Predictable, offline, testable gates that keep incoherent or hallucinated output from being drafted/published silently, without depending on a model to grade a model.
+
+**Revisit if:** LLM-graded rubrics are added (they can feed the same `review`/`groundedness` shapes).
+
 ## Explicitly deferred (tracked, target sprint)
 
 Per the PR #2 plan, the following are intentionally **not** in this MVP and are deferred to the noted sprint:
 
 - **Authentication / per-user authorization** (ADR-006, NFR-S1) — single-user local tool by design (D2); no `users` table. *Target: when multi-user hosting is needed.*
-- **Observability** (ADR-009, NFR-O1/O2) — no structured logging/correlation IDs, OTel traces, or token/cost logging yet. *Target: Sprint 2 (OTel) / Sprint 5 (alerts).*
-- **Accessibility hardening** (ADR-008, NFR-A1–A5) — no Radix/axe CI/manual audit yet; the review dialog ships focus + Esc handling only. *Target: Sprint 4.*
+- **Observability** (ADR-009, NFR-O1/O2) — correlation IDs (`x-request-id` → `analysis_jobs.correlation_id`) and structured job lifecycle logs now ship (D12); OTel traces, metrics, and token/cost logging are still deferred. *Target: Sprint 2 (OTel) / Sprint 5 (alerts).*
+- **Accessibility hardening** (ADR-008, NFR-A1–A5) — no Radix/axe CI/manual audit yet; the review dialog ships focus + Esc handling, and pages now have polite live regions for job/organize/publish status, `role="alert"` errors, labelled controls, and a keyboard-operable dropzone. *Target: Sprint 4.*
 - **Chunked/resumable upload** (FR-ING-03) — whole-file multipart with a 500MB cap; no upload sessions. *Target: when >500MB recordings are common.*
 - **Malware scanning** (FR-ING-05, NFR-S2) — beyond signature sniffing. *Target: with storage backend.*
-- **Organization & groundedness rubrics** (AC-ORG-05, AC-GEN-04) — deterministic heuristics + gap detection ship instead. *Target: Sprint 3–4.*
+- **LLM-scored organization & groundedness rubrics** (AC-ORG-05, AC-GEN-04) — deterministic rubric and groundedness gates now ship (D13); model-graded scoring and per-claim source references (AC-GEN-01) remain deferred. *Target: Sprint 3–4.*
 - **Git-push / CMS publishing target** (ADR-010) — the `PublishingAdapter` seam is in place; the Git adapter itself is deferred. *Target: Sprint 4.*

@@ -69,6 +69,23 @@ export interface CaseStudySection {
 export interface CaseStudyOutline extends CaseStudy {
   sections: CaseStudySection[];
   gaps: Gap[];
+  review: OutlineReview;
+}
+
+/** Organization rubric result (AC-ORG-05): incoherent outlines are flagged before drafting. */
+export interface OutlineReview {
+  needsReview: boolean;
+  reasons: string[];
+}
+
+/** Deterministic groundedness check of a draft against its case study media (AC-GEN-04). */
+export interface Groundedness {
+  grounded: boolean;
+  /** Share of the case study's media that the draft references (0–1). */
+  score: number;
+  referencedMedia: number;
+  totalMedia: number;
+  issues: string[];
 }
 
 export interface Gap {
@@ -116,6 +133,8 @@ export interface AnalysisJob {
   maxAttempts: number;
   runAt: string;
   error: string | null;
+  /** Request ID of the API call that enqueued the job (NFR-O1 correlation). */
+  correlationId: string | null;
   createdAt: string;
   updatedAt: string;
 }

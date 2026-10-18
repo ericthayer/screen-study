@@ -284,7 +284,7 @@ class LocalProvider implements AiProvider {
         continue;
       }
       for (const item of section.items) {
-        lines.push(`### ${item.originalName}`, '');
+        lines.push(`### ${item.originalName}`, '', `**${item.originalName}**`, '');
         if (item.insight?.summary) {
           lines.push(item.insight.summary, '');
         }

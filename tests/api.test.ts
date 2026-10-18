@@ -4,7 +4,8 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/server/app.js';
-import type { JobRunner } from '../src/server/services/jobs.js';
+import type { AppContext } from '../src/server/context.js';
+import { JobRunner } from '../src/server/services/jobs.js';
 
 const PNG_1PX = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
@@ -13,7 +14,7 @@ const PNG_1PX = Buffer.from(
 
 /** Access the app context (decorated by buildApp for tests/operations). */
 function ctx(app: FastifyInstance) {
-  return (app as unknown as { ctx: { jobs: JobRunner } }).ctx;
+  return (app as unknown as { ctx: AppContext }).ctx;
 }
 
 describe('ScreenStudy API (end-to-end pipeline)', () => {
@@ -89,13 +90,15 @@ describe('ScreenStudy API (end-to-end pipeline)', () => {
     expect(res.statusCode).toBe(415);
   });
 
-  async function uploadPng(name = 'shot.png'): Promise<string> {
+  async function uploadPng(name = 'shot.png', trailer = ''): Promise<string> {
     const boundary = '----testboundary';
     const payload = Buffer.concat([
       Buffer.from(
         `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${name}"\r\nContent-Type: image/png\r\n\r\n`,
       ),
       PNG_1PX,
+      // Optional trailing bytes make otherwise-identical PNGs distinct (content-hash dedupe).
+      Buffer.from(trailer),
       Buffer.from(`\r\n--${boundary}--\r\n`),
     ]);
     const res = await app.inject({
@@ -148,8 +151,18 @@ describe('ScreenStudy API (end-to-end pipeline)', () => {
     // Gaps: problem/process/outcomes have no media.
     expect(outline.gaps.length).toBeGreaterThan(0);
 
+    // Rubric (AC-ORG-05): one populated section → "needs review"; drafting requires acknowledgement.
+    expect(outline.review.needsReview).toBe(true);
+    const blocked = await app.inject({ method: 'POST', url: `/api/case-studies/${caseStudyId}/generate` });
+    expect(blocked.statusCode).toBe(409);
+    expect(blocked.json().review.reasons.length).toBeGreaterThan(0);
+
     // Generate a draft (async job → draft id on completion).
-    const gen = await app.inject({ method: 'POST', url: `/api/case-studies/${caseStudyId}/generate` });
+    const gen = await app.inject({
+      method: 'POST',
+      url: `/api/case-studies/${caseStudyId}/generate`,
+      payload: { acknowledgeReview: true },
+    });
     expect(gen.statusCode).toBe(202);
     await ctx(app).jobs.drain();
     const genJob = (await app.inject({ method: 'GET', url: `/api/analysis/jobs/${gen.json().job.id}` }))
@@ -180,8 +193,13 @@ describe('ScreenStudy API (end-to-end pipeline)', () => {
     expect(pub.statusCode).toBe(201);
     const record = pub.json().record;
     expect(record.status).toBe('published');
+    // Output lands in PUBLISH_DIR (not the publicly served media dir) with media copied alongside.
+    expect(record.path).toBe(path.join(dataDir, 'published', 'checkout-redesign'));
+    expect(existsSync(path.join(dataDir, 'media', 'checkout-redesign'))).toBe(false);
     const articlePath = path.join(record.path as string, 'index.md');
     expect(existsSync(articlePath)).toBe(true);
+    const mediaFilename = analyzed.json().item.filename as string;
+    expect(existsSync(path.join(record.path as string, mediaFilename))).toBe(true);
     expect(readFileSync(articlePath, 'utf8')).toContain('draft: false');
 
     // Unpublish removes the output.
@@ -302,7 +320,7 @@ describe('ScreenStudy API (end-to-end pipeline)', () => {
     });
     const caseStudyId = cs.json().caseStudy.id as string;
     await app.inject({ method: 'POST', url: `/api/case-studies/${caseStudyId}/auto-organize` });
-    const gen = await app.inject({ method: 'POST', url: `/api/case-studies/${caseStudyId}/generate` });
+    const gen = await app.inject({ method: 'POST', url: `/api/case-studies/${caseStudyId}/generate`, payload: { acknowledgeReview: true } });
     await ctx(app).jobs.drain();
     const job = (await app.inject({ method: 'GET', url: `/api/analysis/jobs/${gen.json().job.id}` })).json().job;
 
@@ -311,5 +329,181 @@ describe('ScreenStudy API (end-to-end pipeline)', () => {
     expect(dry.json().target).toBe('filesystem');
     expect(dry.json().bundle.slug).toBe('dry-run-study');
     expect(existsSync(path.join(dataDir, 'published', 'dry-run-study'))).toBe(false);
+  });
+
+  it('retries a failed draft-generation job as a draft job', async () => {
+    const cs = await app.inject({ method: 'POST', url: '/api/case-studies', payload: { title: 'Retry' } });
+    const caseStudyId = cs.json().caseStudy.id as string;
+    const original = ctx(app).ai.generateArticle;
+    ctx(app).ai.generateArticle = async () => {
+      throw new Error('provider down');
+    };
+    const job = (await app.inject({ method: 'POST', url: `/api/case-studies/${caseStudyId}/generate`, payload: { acknowledgeReview: true } })).json()
+      .job;
+    for (let i = 0; i < 3; i++) await ctx(app).jobs.drain(200, true);
+    const failed = (await app.inject({ method: 'GET', url: `/api/analysis/jobs/${job.id}` })).json().job;
+    expect(failed.status).toBe('failed');
+    expect(failed.error).toBe('provider down');
+
+    ctx(app).ai.generateArticle = original;
+    const retry = await app.inject({ method: 'POST', url: `/api/analysis/jobs/${job.id}/retry` });
+    expect(retry.statusCode).toBe(202);
+    expect(retry.json().job).toMatchObject({ kind: 'draft', caseStudyId, status: 'pending' });
+    await ctx(app).jobs.drain();
+    const done = (await app.inject({ method: 'GET', url: `/api/analysis/jobs/${retry.json().job.id}` })).json()
+      .job;
+    expect(done.status).toBe('done');
+    expect(done.draftId).toBeTruthy();
+  });
+
+  it('only requeues running jobs older than the stale threshold', async () => {
+    const mediaId = await uploadPng();
+    await app.inject({ method: 'POST', url: `/api/media/${mediaId}/analyze` });
+    const claimed = ctx(app).db.claimNextJob();
+    expect(claimed?.status).toBe('running');
+    // Just claimed: not stale yet.
+    expect(ctx(app).db.requeueStaleJobs(60)).toBe(0);
+    // A cutoff in the future treats it as stale.
+    expect(ctx(app).db.requeueStaleJobs(-120)).toBe(1);
+    expect(ctx(app).db.getAnalysisJob(claimed!.id)?.status).toBe('pending');
+  });
+
+  it('returns 404 for unknown sections', async () => {
+    const mediaId = await uploadPng();
+    const missing = '00000000-0000-0000-0000-000000000000';
+    const rename = await app.inject({ method: 'PATCH', url: `/api/sections/${missing}`, payload: { title: 'X' } });
+    expect(rename.statusCode).toBe(404);
+    const assign = await app.inject({ method: 'PUT', url: `/api/sections/${missing}/media/${mediaId}` });
+    expect(assign.statusCode).toBe(404);
+    const unassign = await app.inject({ method: 'DELETE', url: `/api/sections/${missing}/media/${mediaId}` });
+    expect(unassign.statusCode).toBe(404);
+  });
+
+  it('validates request bodies with 400s instead of server errors', async () => {
+    const batch = await app.inject({ method: 'POST', url: '/api/analysis/batch', payload: { mediaIds: 'abc' } });
+    expect(batch.statusCode).toBe(400);
+
+    const cs = await app.inject({ method: 'POST', url: '/api/case-studies', payload: { title: 'Validate' } });
+    const caseStudyId = cs.json().caseStudy.id as string;
+    await app.inject({ method: 'POST', url: `/api/case-studies/${caseStudyId}/generate`, payload: { acknowledgeReview: true } });
+    await ctx(app).jobs.drain();
+    const [draft] = (await app.inject({ method: 'GET', url: `/api/case-studies/${caseStudyId}/drafts` })).json()
+      .drafts;
+    const bad = await app.inject({ method: 'PATCH', url: `/api/drafts/${draft.id}`, payload: { status: 'bogus' } });
+    expect(bad.statusCode).toBe(400);
+    const ok = await app.inject({ method: 'PATCH', url: `/api/drafts/${draft.id}`, payload: { status: 'review' } });
+    expect(ok.json().draft.status).toBe('review');
+  });
+
+  it('propagates request IDs from the API to jobs and job logs (NFR-O1)', async () => {
+    const mediaId = await uploadPng();
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/media/${mediaId}/analyze`,
+      headers: { 'x-request-id': 'trace-abc-123' },
+    });
+    expect(res.headers['x-request-id']).toBe('trace-abc-123');
+    expect(res.json().job.correlationId).toBe('trace-abc-123');
+
+    const lines: { level: string; obj: Record<string, unknown>; msg: string }[] = [];
+    const capture = (level: string) => (obj: Record<string, unknown>, msg: string) =>
+      lines.push({ level, obj, msg });
+    const c = ctx(app);
+    const runner = new JobRunner(c.db, c.ai, c.storage, 50, {
+      info: capture('info'),
+      warn: capture('warn'),
+      error: capture('error'),
+    });
+    await runner.drain();
+    expect(lines.map((l) => l.msg)).toEqual(['job started', 'job succeeded']);
+    expect(lines[1].obj).toMatchObject({ correlationId: 'trace-abc-123', kind: 'analysis', attempt: 1 });
+    expect(typeof lines[1].obj.durationMs).toBe('number');
+  });
+
+  it('generates a request ID when the incoming one is missing or unsafe', async () => {
+    const plain = await app.inject({ method: 'GET', url: '/api/health' });
+    expect(plain.headers['x-request-id']).toMatch(/^[0-9a-f-]{36}$/);
+    const unsafe = await app.inject({
+      method: 'GET',
+      url: '/api/health',
+      headers: { 'x-request-id': 'bad id with spaces' },
+    });
+    expect(unsafe.headers['x-request-id']).not.toBe('bad id with spaces');
+    expect(unsafe.headers['x-request-id']).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('drafts a coherent outline without acknowledgement and gates publishing on groundedness', async () => {
+    const a = await uploadPng('problem.png', 'a');
+    const b = await uploadPng('result.png', 'b');
+    await app.inject({ method: 'POST', url: '/api/analysis/batch', payload: {} });
+    await ctx(app).jobs.drain();
+    await app.inject({ method: 'PUT', url: `/api/insights/${a}`, payload: { decisions: ['Use tabs'] } });
+    await app.inject({ method: 'PUT', url: `/api/insights/${b}`, payload: { outcomes: ['Shipped'] } });
+    const cs = await app.inject({ method: 'POST', url: '/api/case-studies', payload: { title: 'Grounded' } });
+    const caseStudyId = cs.json().caseStudy.id as string;
+    const organized = await app.inject({ method: 'POST', url: `/api/case-studies/${caseStudyId}/auto-organize` });
+    expect(organized.json().outline.review).toEqual({ needsReview: false, reasons: [] });
+
+    const gen = await app.inject({ method: 'POST', url: `/api/case-studies/${caseStudyId}/generate` });
+    expect(gen.statusCode).toBe(202);
+    await ctx(app).jobs.drain();
+    const draftId = (await app.inject({ method: 'GET', url: `/api/analysis/jobs/${gen.json().job.id}` })).json().job
+      .draftId as string;
+    const v1 = (await app.inject({ method: 'GET', url: `/api/drafts/${draftId}` })).json();
+    expect(v1.groundedness).toMatchObject({ grounded: true, score: 1, referencedMedia: 2, totalMedia: 2 });
+
+    // An ungrounded revision (drops real references, cites an unknown artifact) is blocked.
+    const v2 = (
+      await app.inject({
+        method: 'PATCH',
+        url: `/api/drafts/${draftId}`,
+        payload: { markdown: v1.draft.markdown.replaceAll('**', '') + '\n\nSee **ghost.png**.' },
+      })
+    ).json().draft;
+    const v2Detail = (await app.inject({ method: 'GET', url: `/api/drafts/${v2.id}` })).json();
+    expect(v2Detail.groundedness.grounded).toBe(false);
+    expect(v2Detail.groundedness.issues.join(' ')).toContain('ghost.png');
+    const dry = (await app.inject({ method: 'POST', url: `/api/drafts/${v2.id}/publish/dry-run` })).json();
+    expect(dry.groundedness.grounded).toBe(false);
+    const blocked = await app.inject({ method: 'POST', url: `/api/drafts/${v2.id}/publish` });
+    expect(blocked.statusCode).toBe(409);
+    expect(existsSync(path.join(dataDir, 'published', 'grounded'))).toBe(false);
+
+    // Bold non-media names (e.g. frameworks) are not treated as artifact references.
+    const v3 = (
+      await app.inject({
+        method: 'PATCH',
+        url: `/api/drafts/${draftId}`,
+        payload: { markdown: v1.draft.markdown + '\n\nBuilt with **Next.js**.' },
+      })
+    ).json().draft;
+    expect((await app.inject({ method: 'GET', url: `/api/drafts/${v3.id}` })).json().groundedness.grounded).toBe(
+      true,
+    );
+
+    // The grounded version publishes, with images embedded and a valid bundle.
+    const okDry = (await app.inject({ method: 'POST', url: `/api/drafts/${draftId}/publish/dry-run` })).json();
+    expect(okDry.issues).toEqual([]);
+    expect(okDry.bundle.markdown).toContain('![problem.png](./');
+    const pub = await app.inject({ method: 'POST', url: `/api/drafts/${draftId}/publish` });
+    expect(pub.statusCode).toBe(201);
+  });
+
+  it('retracts legacy publishes that were written under the media dir', () => {
+    const c = ctx(app);
+    c.storage.writeText('legacy-study/index.md', '# old');
+    const legacyPath = c.storage.absolutePath('legacy-study')!;
+    expect(existsSync(legacyPath)).toBe(true);
+    c.publisher.retract({
+      id: 'r1',
+      draftId: 'd1',
+      target: 'filesystem',
+      status: 'published',
+      path: legacyPath,
+      publishedAt: null,
+      unpublishedAt: null,
+      error: null,
+    });
+    expect(existsSync(legacyPath)).toBe(false);
   });
 });

@@ -47,7 +47,7 @@ src/
   web/                   # React SPA (pages/, components/, api.ts client)
 tests/                   # Vitest; api.test.ts runs the full pipeline end to end
 docs/adr/                # ADR-001…010 architecture decision records + index
-DECISIONS.md             # sprint-level decision summary (D1–D11)
+DECISIONS.md             # sprint-level decision summary (D1–D13)
 data/                    # runtime data (SQLite DB, media, published) — gitignored
 ```
 

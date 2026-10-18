@@ -43,6 +43,9 @@ export function registerCaseStudyRoutes(app: FastifyInstance, ctx: AppContext): 
     async (request, reply) => {
       const title = request.body?.title?.trim();
       if (!title) return reply.status(400).send({ error: 'title is required' });
+      if (!ctx.db.getSection(request.params.sectionId)) {
+        return reply.status(404).send({ error: 'Section not found' });
+      }
       ctx.db.renameSection(request.params.sectionId, title);
       return reply.status(204).send();
     },
@@ -52,6 +55,9 @@ export function registerCaseStudyRoutes(app: FastifyInstance, ctx: AppContext): 
   app.put<{ Params: { sectionId: string; mediaId: string } }>(
     '/sections/:sectionId/media/:mediaId',
     async (request, reply) => {
+      if (!ctx.db.getSection(request.params.sectionId)) {
+        return reply.status(404).send({ error: 'Section not found' });
+      }
       if (!ctx.db.getMediaItem(request.params.mediaId)) {
         return reply.status(404).send({ error: 'Media not found' });
       }
@@ -63,6 +69,9 @@ export function registerCaseStudyRoutes(app: FastifyInstance, ctx: AppContext): 
   app.delete<{ Params: { sectionId: string; mediaId: string } }>(
     '/sections/:sectionId/media/:mediaId',
     async (request, reply) => {
+      if (!ctx.db.getSection(request.params.sectionId)) {
+        return reply.status(404).send({ error: 'Section not found' });
+      }
       ctx.db.removeMediaFromSection(request.params.sectionId, request.params.mediaId);
       return reply.status(204).send();
     },

@@ -1,5 +1,12 @@
 import type { ScreenStudyDb } from '../db.js';
-import type { CaseStudyOutline, Gap, Insight, SectionKey } from '../../shared/types.js';
+import type {
+  CaseStudyOutline,
+  CaseStudySection,
+  Gap,
+  Insight,
+  OutlineReview,
+  SectionKey,
+} from '../../shared/types.js';
 import { SECTION_LABELS } from '../../shared/types.js';
 
 /**
@@ -19,7 +26,7 @@ export function classifyInsight(insight: Insight | null): SectionKey {
 }
 
 /** Detect sections of the outline that lack supporting media or insight detail. */
-export function detectGaps(outline: Omit<CaseStudyOutline, 'gaps'>, db: ScreenStudyDb): Gap[] {
+export function detectGaps(outline: Omit<CaseStudyOutline, 'gaps' | 'review'>, db: ScreenStudyDb): Gap[] {
   const gaps: Gap[] = [];
   for (const section of outline.sections) {
     if (section.mediaIds.length === 0) {
@@ -41,6 +48,33 @@ export function detectGaps(outline: Omit<CaseStudyOutline, 'gaps'>, db: ScreenSt
     }
   }
   return gaps;
+}
+
+/** Minimum number of sections with media for a coherent narrative. */
+export const MIN_SECTIONS_COVERED = 2;
+
+/**
+ * Organization rubric (AC-ORG-05): deterministic checks that flag an outline
+ * as "needs review" so an incoherent batch is not silently drafted.
+ */
+export function reviewOutline(sections: CaseStudySection[], db: ScreenStudyDb): OutlineReview {
+  const reasons: string[] = [];
+  const mediaIds = sections.flatMap((s) => s.mediaIds);
+  if (mediaIds.length === 0) {
+    reasons.push('No media is assigned to any section yet.');
+  } else {
+    const covered = sections.filter((s) => s.mediaIds.length > 0).length;
+    if (covered < MIN_SECTIONS_COVERED) {
+      reasons.push(
+        `Only ${covered} of ${sections.length} sections have supporting media; a coherent narrative needs at least ${MIN_SECTIONS_COVERED}.`,
+      );
+    }
+    const missing = mediaIds.filter((id) => !db.getInsightByMedia(id)?.summary).length;
+    if (missing * 2 > mediaIds.length) {
+      reasons.push(`${missing} of ${mediaIds.length} assigned media items lack analyzed insights.`);
+    }
+  }
+  return { needsReview: reasons.length > 0, reasons };
 }
 
 /**
@@ -80,7 +114,7 @@ export function getOutline(db: ScreenStudyDb, caseStudyId: string): CaseStudyOut
   const sections = db.getSections(caseStudyId);
   const outline = { ...study, sections };
   const gaps = detectGaps(outline, db);
-  return { ...outline, gaps };
+  return { ...outline, gaps, review: reviewOutline(sections, db) };
 }
 
 export function sectionLabel(key: SectionKey): string {
