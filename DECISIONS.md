@@ -117,7 +117,7 @@ Per the PR #2 plan, the following are intentionally **not** in this MVP and are 
 
 - **Authentication / per-user authorization** (ADR-006, NFR-S1) — single-user local tool by design (D2); no `users` table. *Target: when multi-user hosting is needed.*
 - **Observability** (ADR-009, NFR-O1/O2) — correlation IDs (`x-request-id` → `analysis_jobs.correlation_id`) and structured job lifecycle logs now ship (D12); OTel traces, metrics, and token/cost logging are still deferred. *Target: Sprint 2 (OTel) / Sprint 5 (alerts).*
-- **Accessibility hardening** (ADR-008, NFR-A1–A5) — no Radix/axe CI/manual audit yet; the review dialog ships focus + Esc handling only. *Target: Sprint 4.*
+- **Accessibility hardening** (ADR-008, NFR-A1–A5) — no Radix/axe CI/manual audit yet; the review dialog ships focus + Esc handling, and pages now have polite live regions for job/organize/publish status, `role="alert"` errors, labelled controls, and a keyboard-operable dropzone. *Target: Sprint 4.*
 - **Chunked/resumable upload** (FR-ING-03) — whole-file multipart with a 500MB cap; no upload sessions. *Target: when >500MB recordings are common.*
 - **Malware scanning** (FR-ING-05, NFR-S2) — beyond signature sniffing. *Target: with storage backend.*
 - **LLM-scored organization & groundedness rubrics** (AC-ORG-05, AC-GEN-04) — deterministic rubric and groundedness gates now ship (D13); model-graded scoring and per-claim source references (AC-GEN-01) remain deferred. *Target: Sprint 3–4.*

@@ -9,31 +9,47 @@ export function LibraryPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<MediaWithInsight | null>(null);
+  // Number of queued/running analysis jobs; polled so status updates even
+  // before the runner flips media to "analyzing" (jobs start as "pending").
+  const [activeJobs, setActiveJobs] = useState(0);
+  const [status, setStatus] = useState('');
+  const previousJobs = useRef(0);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => {
-    const { items } = await api.listMedia();
+    const [{ items }, { jobs }] = await Promise.all([api.listMedia(), api.listJobs()]);
     setItems(items);
+    const inFlight = jobs.filter(
+      (j) => j.kind === 'analysis' && (j.status === 'pending' || j.status === 'running'),
+    ).length;
+    if (inFlight > 0) setStatus(`Analyzing… ${inFlight} job(s) in progress.`);
+    else if (previousJobs.current > 0) setStatus('Analysis complete.');
+    previousJobs.current = inFlight;
+    setActiveJobs(inFlight);
   }, []);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
-  // Poll while any analysis is in flight.
+  // Poll while any analysis is queued or in flight.
   useEffect(() => {
-    if (!items.some((i) => i.status === 'analyzing')) return;
+    if (activeJobs === 0 && !items.some((i) => i.status === 'analyzing')) return;
     const timer = setInterval(() => void refresh(), 2000);
     return () => clearInterval(timer);
-  }, [items, refresh]);
+  }, [activeJobs, items, refresh]);
 
   const upload = async (files: File[]) => {
     if (files.length === 0) return;
     setBusy(true);
     setError(null);
     try {
-      await api.uploadMedia(files);
+      const { items: uploaded, duplicates } = await api.uploadMedia(files);
       await refresh();
+      setStatus(
+        `Uploaded ${uploaded.length} file(s)` +
+          (duplicates.length > 0 ? `; ${duplicates.length} duplicate(s) skipped.` : '.'),
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -71,6 +87,12 @@ export function LibraryPage() {
           void upload(Array.from(e.dataTransfer.files));
         }}
         onClick={() => fileInput.current?.click()}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            fileInput.current?.click();
+          }
+        }}
         role="button"
         tabIndex={0}
       >
@@ -100,7 +122,14 @@ export function LibraryPage() {
         <span className="muted">{items.length} item(s)</span>
       </div>
 
-      {error && <p className="error">{error}</p>}
+      <p role="status" aria-live="polite" className="muted">
+        {status}
+      </p>
+      {error && (
+        <p role="alert" className="error">
+          {error}
+        </p>
+      )}
 
       <div className="media-grid">
         {items.map((item) => (
