@@ -2,68 +2,73 @@
 
 ScreenStudy helps you convert weekly work artifacts into review-ready UX engineering case study drafts, then publish those drafts through a controlled GitHub PR workflow.
 
-## Current MVP
+## What It Does
 
-The current implementation is a practical capture-to-publish flow:
+Upload or scan a collection of media — screenshots, videos, and speech-to-text recordings — and an AI agent analyzes, organizes, and drafts a case study article from your content. The goal is a low-maintenance, repeatable workflow for documenting and publishing your design and engineering work.
 
-1. Quick capture inbox for weekly evidence entries.
-2. Weekly queue grouping and review.
-3. Portfolio Signal draft generation (`problem`, `decisions`, `outcomes`, `impact`).
-4. Low-confidence markers to highlight weak evidence.
-5. Mandatory human approval gate before publish.
-6. Markdown export with frontmatter.
-7. Optional GitHub branch + commit + pull request creation.
+## Core Features (Planned)
 
-## Why This Exists
+- **Media ingestion** — upload screenshots, screen recordings, and audio/video files
+- **AI-powered analysis** — an agent reviews your media and extracts key insights, decisions, and outcomes
+- **Auto-organization** — media is categorized and structured around a case study narrative
+- **Article generation** — produces a draft UX Engineering case study ready for review and publishing
+- **Automated publishing** — push finished articles to a blog or static site with minimal manual effort
 
-Documenting work consistently is high-value but time-consuming. ScreenStudy reduces documentation overhead by turning small, frequent captures into a structured publishing artifact.
+## Motivation
 
-## Planned Direction
+Keeping a consistent record of your work is valuable but time-consuming. ScreenStudy removes that friction by letting you capture raw artifacts throughout the week and handling the write-up automatically — so you can stay focused on the work itself.
 
-The longer-term direction includes richer media ingestion and AI-assisted narrative extraction. See implementation docs for details.
+## Status
 
-## Quick Start
-
-1. Install dependencies:
-   - `npm install`
-2. Use supported Node version:
-   - `nvm use 24`
-3. Start development server:
-   - `npm run dev`
-
-## Scripts
-
-| Command | Purpose |
-| --- | --- |
-| `npm run dev` | Start local dev server |
-| `npm run typecheck` | Run TypeScript checks |
-| `npm run lint` | Run ESLint |
-| `npm run build` | Build for production |
-| `npm run preview` | Preview production build |
-
-## Architecture Snapshot
-
-- Framework: React 19 + TypeScript + Vite 8
-- Styling: vanilla CSS
-- Main app flow currently lives in `src/App.tsx`
-- Persistence via browser localStorage with schema versioning
+Early-stage / work in progress. The core pipeline is implemented end to end: upload → analyze → organize → draft → publish. See [DECISIONS.md](./DECISIONS.md) for the chosen stack and architecture.
 
 ## Documentation
 
-- Implementation handoff: [docs/implementation-handoff.md](docs/implementation-handoff.md)
-- Day-by-day execution docs: [docs](docs)
-- Architecture decision records: [docs/decisions](docs/decisions)
-- Visual project overview (HTML): [docs/project-overview.html](docs/project-overview.html)
+ScreenStudy uses a spec-driven approach: product and feature requirements live under [`docs/specs/`](docs/specs/), architecture decisions live under [`docs/adr/`](docs/adr/), and supporting system design, quality, and operations docs live in the [`docs/`](docs/) hub.
 
-## AI Agent Customization
+- [Docs hub](docs/README.md)
+- [Feature specs](docs/specs/)
+- [Architecture Decision Records](docs/adr/)
+- [System architecture](docs/architecture/)
+- [Quality docs](docs/quality/)
+- [Operations docs](docs/operations/)
 
-This repo uses `agents-config` and keeps shared customization in `.agents/`.
+## Getting Started
 
-Start with:
+Requires Node.js 20+.
 
-1. [.agents/AGENTS.md](.agents/AGENTS.md)
-2. [.agents/PROJECT-CONTEXT.md](.agents/PROJECT-CONTEXT.md)
-3. [.github/copilot-instructions.md](.github/copilot-instructions.md)
+```bash
+npm install
+npm run dev        # API server on :3000
+npm run dev:web    # web client on :5173 (proxies API/media to :3000)
+```
+
+Production build:
+
+```bash
+npm run build
+npm start          # serves API + built web client on :3000
+```
+
+### AI providers
+
+The app works out of the box with the offline `local` provider (placeholder insights + template articles). For real AI analysis, set one of:
+
+```bash
+export ANTHROPIC_API_KEY=...   # vision analysis + article generation
+export OPENAI_API_KEY=...      # vision analysis + Whisper transcription + article generation
+export AI_PROVIDER=anthropic   # optional; auto-detected from keys
+```
+
+### Development
+
+```bash
+npm test           # Vitest (unit + API pipeline tests)
+npm run lint
+npm run typecheck
+```
+
+Data (SQLite DB, uploaded media, published articles) lives in `./data` by default; override with `DATA_DIR`, `MEDIA_DIR`, and `PUBLISH_DIR`.
 
 ## Contributing
 
