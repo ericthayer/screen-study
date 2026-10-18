@@ -17,6 +17,7 @@ Generated articles need a publishing target. Options range from static export (d
 - The adapter exposes `render / dryRun / publish / retract`; `POST /api/drafts/:id/publish/dry-run` previews a publish without writing.
 - Unpublish is a directory delete; publish/unpublish history is tracked in SQLite (`publish_records`).
 - Editing a draft creates a new version rather than mutating in place.
+- *Amended 2026-10-18:* publishing is gated by target-agnostic checks run before the adapter — draft groundedness (409 when ungrounded) and `validateBundle` (422 on invalid frontmatter, missing media, or empty alt text). Dry-run returns both results. See DECISIONS.md D13.
 
 ## Alternatives Considered
 

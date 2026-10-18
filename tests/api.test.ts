@@ -90,13 +90,15 @@ describe('ScreenStudy API (end-to-end pipeline)', () => {
     expect(res.statusCode).toBe(415);
   });
 
-  async function uploadPng(name = 'shot.png'): Promise<string> {
+  async function uploadPng(name = 'shot.png', trailer = ''): Promise<string> {
     const boundary = '----testboundary';
     const payload = Buffer.concat([
       Buffer.from(
         `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${name}"\r\nContent-Type: image/png\r\n\r\n`,
       ),
       PNG_1PX,
+      // Optional trailing bytes make otherwise-identical PNGs distinct (content-hash dedupe).
+      Buffer.from(trailer),
       Buffer.from(`\r\n--${boundary}--\r\n`),
     ]);
     const res = await app.inject({
@@ -149,8 +151,18 @@ describe('ScreenStudy API (end-to-end pipeline)', () => {
     // Gaps: problem/process/outcomes have no media.
     expect(outline.gaps.length).toBeGreaterThan(0);
 
+    // Rubric (AC-ORG-05): one populated section → "needs review"; drafting requires acknowledgement.
+    expect(outline.review.needsReview).toBe(true);
+    const blocked = await app.inject({ method: 'POST', url: `/api/case-studies/${caseStudyId}/generate` });
+    expect(blocked.statusCode).toBe(409);
+    expect(blocked.json().review.reasons.length).toBeGreaterThan(0);
+
     // Generate a draft (async job → draft id on completion).
-    const gen = await app.inject({ method: 'POST', url: `/api/case-studies/${caseStudyId}/generate` });
+    const gen = await app.inject({
+      method: 'POST',
+      url: `/api/case-studies/${caseStudyId}/generate`,
+      payload: { acknowledgeReview: true },
+    });
     expect(gen.statusCode).toBe(202);
     await ctx(app).jobs.drain();
     const genJob = (await app.inject({ method: 'GET', url: `/api/analysis/jobs/${gen.json().job.id}` }))
@@ -308,7 +320,7 @@ describe('ScreenStudy API (end-to-end pipeline)', () => {
     });
     const caseStudyId = cs.json().caseStudy.id as string;
     await app.inject({ method: 'POST', url: `/api/case-studies/${caseStudyId}/auto-organize` });
-    const gen = await app.inject({ method: 'POST', url: `/api/case-studies/${caseStudyId}/generate` });
+    const gen = await app.inject({ method: 'POST', url: `/api/case-studies/${caseStudyId}/generate`, payload: { acknowledgeReview: true } });
     await ctx(app).jobs.drain();
     const job = (await app.inject({ method: 'GET', url: `/api/analysis/jobs/${gen.json().job.id}` })).json().job;
 
@@ -326,7 +338,7 @@ describe('ScreenStudy API (end-to-end pipeline)', () => {
     ctx(app).ai.generateArticle = async () => {
       throw new Error('provider down');
     };
-    const job = (await app.inject({ method: 'POST', url: `/api/case-studies/${caseStudyId}/generate` })).json()
+    const job = (await app.inject({ method: 'POST', url: `/api/case-studies/${caseStudyId}/generate`, payload: { acknowledgeReview: true } })).json()
       .job;
     for (let i = 0; i < 3; i++) await ctx(app).jobs.drain(200, true);
     const failed = (await app.inject({ method: 'GET', url: `/api/analysis/jobs/${job.id}` })).json().job;
@@ -373,7 +385,7 @@ describe('ScreenStudy API (end-to-end pipeline)', () => {
 
     const cs = await app.inject({ method: 'POST', url: '/api/case-studies', payload: { title: 'Validate' } });
     const caseStudyId = cs.json().caseStudy.id as string;
-    await app.inject({ method: 'POST', url: `/api/case-studies/${caseStudyId}/generate` });
+    await app.inject({ method: 'POST', url: `/api/case-studies/${caseStudyId}/generate`, payload: { acknowledgeReview: true } });
     await ctx(app).jobs.drain();
     const [draft] = (await app.inject({ method: 'GET', url: `/api/case-studies/${caseStudyId}/drafts` })).json()
       .drafts;
@@ -418,5 +430,50 @@ describe('ScreenStudy API (end-to-end pipeline)', () => {
     });
     expect(unsafe.headers['x-request-id']).not.toBe('bad id with spaces');
     expect(unsafe.headers['x-request-id']).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('drafts a coherent outline without acknowledgement and gates publishing on groundedness', async () => {
+    const a = await uploadPng('problem.png', 'a');
+    const b = await uploadPng('result.png', 'b');
+    await app.inject({ method: 'POST', url: '/api/analysis/batch', payload: {} });
+    await ctx(app).jobs.drain();
+    await app.inject({ method: 'PUT', url: `/api/insights/${a}`, payload: { decisions: ['Use tabs'] } });
+    await app.inject({ method: 'PUT', url: `/api/insights/${b}`, payload: { outcomes: ['Shipped'] } });
+    const cs = await app.inject({ method: 'POST', url: '/api/case-studies', payload: { title: 'Grounded' } });
+    const caseStudyId = cs.json().caseStudy.id as string;
+    const organized = await app.inject({ method: 'POST', url: `/api/case-studies/${caseStudyId}/auto-organize` });
+    expect(organized.json().outline.review).toEqual({ needsReview: false, reasons: [] });
+
+    const gen = await app.inject({ method: 'POST', url: `/api/case-studies/${caseStudyId}/generate` });
+    expect(gen.statusCode).toBe(202);
+    await ctx(app).jobs.drain();
+    const draftId = (await app.inject({ method: 'GET', url: `/api/analysis/jobs/${gen.json().job.id}` })).json().job
+      .draftId as string;
+    const v1 = (await app.inject({ method: 'GET', url: `/api/drafts/${draftId}` })).json();
+    expect(v1.groundedness).toMatchObject({ grounded: true, score: 1, referencedMedia: 2, totalMedia: 2 });
+
+    // An ungrounded revision (drops real references, cites an unknown artifact) is blocked.
+    const v2 = (
+      await app.inject({
+        method: 'PATCH',
+        url: `/api/drafts/${draftId}`,
+        payload: { markdown: v1.draft.markdown.replaceAll('**', '') + '\n\nSee **ghost.png**.' },
+      })
+    ).json().draft;
+    const v2Detail = (await app.inject({ method: 'GET', url: `/api/drafts/${v2.id}` })).json();
+    expect(v2Detail.groundedness.grounded).toBe(false);
+    expect(v2Detail.groundedness.issues.join(' ')).toContain('ghost.png');
+    const dry = (await app.inject({ method: 'POST', url: `/api/drafts/${v2.id}/publish/dry-run` })).json();
+    expect(dry.groundedness.grounded).toBe(false);
+    const blocked = await app.inject({ method: 'POST', url: `/api/drafts/${v2.id}/publish` });
+    expect(blocked.statusCode).toBe(409);
+    expect(existsSync(path.join(dataDir, 'published', 'grounded'))).toBe(false);
+
+    // The grounded version publishes, with images embedded and a valid bundle.
+    const okDry = (await app.inject({ method: 'POST', url: `/api/drafts/${draftId}/publish/dry-run` })).json();
+    expect(okDry.issues).toEqual([]);
+    expect(okDry.bundle.markdown).toContain('![problem.png](./');
+    const pub = await app.inject({ method: 'POST', url: `/api/drafts/${draftId}/publish` });
+    expect(pub.statusCode).toBe(201);
   });
 });

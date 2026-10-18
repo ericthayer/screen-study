@@ -11,6 +11,35 @@ export interface PublishBundle {
   mediaKeys: string[];
 }
 
+const FRONTMATTER = /^---\n([\s\S]*?)\n---(?:\n|$)/;
+const IMAGE_LINK = /!\[([^\]]*)\]\(\.\/([^)\s]+)\)/g;
+
+/**
+ * Target-agnostic bundle schema check (AC-PUB-01): valid frontmatter, every
+ * referenced media file is included, and every image has non-empty alt text.
+ * Returns human-readable issues; an empty list means the bundle is valid.
+ */
+export function validateBundle(bundle: PublishBundle): string[] {
+  const issues: string[] = [];
+  const frontmatter = FRONTMATTER.exec(bundle.markdown)?.[1];
+  if (frontmatter === undefined) {
+    issues.push('Missing YAML frontmatter block.');
+  } else {
+    if (!/^title: .+$/m.test(frontmatter)) issues.push('Frontmatter is missing "title".');
+    if (!/^date: \d{4}-\d{2}-\d{2}$/m.test(frontmatter))
+      issues.push('Frontmatter "date" must be YYYY-MM-DD.');
+    if (!/^draft: (true|false)$/m.test(frontmatter))
+      issues.push('Frontmatter "draft" must be true or false.');
+  }
+  const included = new Set(bundle.mediaKeys);
+  for (const match of bundle.markdown.matchAll(IMAGE_LINK)) {
+    const [, alt, key] = match;
+    if (!alt.trim()) issues.push(`Image ./${key} has empty alt text.`);
+    if (!included.has(key)) issues.push(`Referenced media ./${key} is not included in the bundle.`);
+  }
+  return issues;
+}
+
 /** Result of a publish/retract call against a target. */
 export interface AdapterResult {
   /** Target-specific locator (e.g. a directory path or PR URL). */

@@ -100,6 +100,17 @@ analysis_jobs    batch analysis progress/error tracking
 
 **Revisit if:** OTel tracing lands (the correlation ID becomes/links to the trace ID).
 
+## D13 — Deterministic quality gates: outline rubric, draft groundedness, bundle validation
+
+**Decision:** Three deterministic checks gate the pipeline:
+- **Outline rubric (AC-ORG-05)** — `reviewOutline` in `services/organize.ts` flags an outline as `review.needsReview` when no media is assigned, fewer than 2 sections have media, or more than half of the assigned media lack insights. `POST /case-studies/:id/generate` returns **409** with the reasons unless the body sets `acknowledgeReview: true`.
+- **Groundedness (AC-GEN-04)** — `assessGroundedness` in `services/article.ts` checks the draft's `**filename**` references against the case study's media: the draft must reference at least 50% of them and no unknown artifacts. Results are returned on `GET /drafts/:id` and dry-run; `POST /drafts/:id/publish` returns **409** for ungrounded drafts. Fixing requires editing the draft (a new version), so the gate is "disabled until resolved".
+- **Bundle validation (AC-PUB-01)** — `validateBundle` in `services/publish.ts` checks frontmatter (`title`, `date` as YYYY-MM-DD, `draft`), that every `./file` image is included in the bundle, and that images have non-empty alt text. Dry-run reports `issues`; publish returns **422** when any exist.
+
+**Rationale:** Predictable, offline, testable gates that keep incoherent or hallucinated output from being drafted/published silently, without depending on a model to grade a model.
+
+**Revisit if:** LLM-graded rubrics are added (they can feed the same `review`/`groundedness` shapes).
+
 ## Explicitly deferred (tracked, target sprint)
 
 Per the PR #2 plan, the following are intentionally **not** in this MVP and are deferred to the noted sprint:
@@ -109,5 +120,5 @@ Per the PR #2 plan, the following are intentionally **not** in this MVP and are 
 - **Accessibility hardening** (ADR-008, NFR-A1–A5) — no Radix/axe CI/manual audit yet; the review dialog ships focus + Esc handling only. *Target: Sprint 4.*
 - **Chunked/resumable upload** (FR-ING-03) — whole-file multipart with a 500MB cap; no upload sessions. *Target: when >500MB recordings are common.*
 - **Malware scanning** (FR-ING-05, NFR-S2) — beyond signature sniffing. *Target: with storage backend.*
-- **Organization & groundedness rubrics** (AC-ORG-05, AC-GEN-04) — deterministic heuristics + gap detection ship instead. *Target: Sprint 3–4.*
+- **LLM-scored organization & groundedness rubrics** (AC-ORG-05, AC-GEN-04) — deterministic rubric and groundedness gates now ship (D13); model-graded scoring and per-claim source references (AC-GEN-01) remain deferred. *Target: Sprint 3–4.*
 - **Git-push / CMS publishing target** (ADR-010) — the `PublishingAdapter` seam is in place; the Git adapter itself is deferred. *Target: Sprint 4.*

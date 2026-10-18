@@ -1,5 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import type { AppContext } from '../context.js';
+import { assessGroundedness } from '../services/article.js';
+import { getOutline } from '../services/organize.js';
+import { validateBundle } from '../services/publish.js';
 import type { DraftStatus } from '../../shared/types.js';
 
 const DRAFT_STATUSES: DraftStatus[] = ['draft', 'review', 'published'];
@@ -9,11 +12,20 @@ export function registerDraftRoutes(app: FastifyInstance, ctx: AppContext): void
   // so it runs as a background job (ADR-002 rule 4 / ADR-004), not in the
   // request handler: the response is 202 + job, and the created draft id is
   // attached to the job when it completes.
-  app.post<{ Params: { id: string } }>(
+  // The organization rubric (AC-ORG-05) gates generation: an outline flagged
+  // "needs review" is only drafted when the caller explicitly acknowledges it.
+  app.post<{ Params: { id: string }; Body: { acknowledgeReview?: boolean } }>(
     '/case-studies/:id/generate',
     async (request, reply) => {
       const study = ctx.db.getCaseStudy(request.params.id);
       if (!study) return reply.status(404).send({ error: 'Not found' });
+      const { review } = getOutline(ctx.db, study.id);
+      if (review.needsReview && request.body?.acknowledgeReview !== true) {
+        return reply.status(409).send({
+          error: 'Outline needs review before drafting; resend with acknowledgeReview: true to proceed.',
+          review,
+        });
+      }
       const job = ctx.db.createDraftJob(study.id, request.id);
       return reply.status(202).send({ job });
     },
@@ -28,7 +40,11 @@ export function registerDraftRoutes(app: FastifyInstance, ctx: AppContext): void
   app.get<{ Params: { id: string } }>('/drafts/:id', async (request, reply) => {
     const draft = ctx.db.getDraft(request.params.id);
     if (!draft) return reply.status(404).send({ error: 'Not found' });
-    return { draft, publishRecords: ctx.db.listPublishRecords(draft.id) };
+    return {
+      draft,
+      publishRecords: ctx.db.listPublishRecords(draft.id),
+      groundedness: assessGroundedness(ctx.db, draft),
+    };
   });
 
   // Export the canonical Markdown (with frontmatter).
@@ -79,7 +95,19 @@ export function registerDraftRoutes(app: FastifyInstance, ctx: AppContext): void
   app.post<{ Params: { id: string } }>('/drafts/:id/publish', async (request, reply) => {
     const draft = ctx.db.getDraft(request.params.id);
     if (!draft) return reply.status(404).send({ error: 'Not found' });
+    // Quality gates: ungrounded drafts (AC-GEN-04) and invalid bundles
+    // (AC-PUB-01) stay unpublishable until a new draft version fixes them.
+    const groundedness = assessGroundedness(ctx.db, draft);
+    if (!groundedness.grounded) {
+      return reply
+        .status(409)
+        .send({ error: 'Draft is not sufficiently grounded in its case study media.', groundedness });
+    }
     try {
+      const issues = validateBundle(ctx.publisher.render(ctx.db, draft.id));
+      if (issues.length > 0) {
+        return reply.status(422).send({ error: 'Publish bundle failed validation.', issues });
+      }
       const result = await ctx.publisher.publish(ctx.db, draft.id);
       const record = ctx.db.createPublishRecord({
         draftId: draft.id,
@@ -108,7 +136,12 @@ export function registerDraftRoutes(app: FastifyInstance, ctx: AppContext): void
       if (!draft) return reply.status(404).send({ error: 'Not found' });
       try {
         const bundle = ctx.publisher.dryRun(ctx.db, draft.id);
-        return { target: ctx.publisher.target, bundle };
+        return {
+          target: ctx.publisher.target,
+          bundle,
+          issues: validateBundle(bundle),
+          groundedness: assessGroundedness(ctx.db, draft),
+        };
       } catch (error) {
         return reply
           .status(500)

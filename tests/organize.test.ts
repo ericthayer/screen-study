@@ -82,4 +82,24 @@ describe('detectGaps', () => {
     expect(outline.gaps.some((g) => g.message.includes('without analyzed insights'))).toBe(true);
     expect(outline.gaps).toHaveLength(4); // 3 empty + 1 unanalyzed
   });
+
+  it('flags an incoherent outline as needing review (AC-ORG-05)', () => {
+    const study = db.createCaseStudy({ title: 'Test' });
+    expect(getOutline(db, study.id).review).toEqual({
+      needsReview: true,
+      reasons: ['No media is assigned to any section yet.'],
+    });
+
+    const media = db.createMediaItem({
+      filename: 'a.png',
+      originalName: 'a.png',
+      mimeType: 'image/png',
+      kind: 'image',
+      sizeBytes: 10,
+    });
+    db.assignMediaToSection(db.getSectionByKey(study.id, 'process')!.id, media.id);
+    const { review } = getOutline(db, study.id);
+    expect(review.needsReview).toBe(true);
+    expect(review.reasons).toHaveLength(2); // single section + unanalyzed media
+  });
 });
