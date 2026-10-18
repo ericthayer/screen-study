@@ -469,11 +469,41 @@ describe('ScreenStudy API (end-to-end pipeline)', () => {
     expect(blocked.statusCode).toBe(409);
     expect(existsSync(path.join(dataDir, 'published', 'grounded'))).toBe(false);
 
+    // Bold non-media names (e.g. frameworks) are not treated as artifact references.
+    const v3 = (
+      await app.inject({
+        method: 'PATCH',
+        url: `/api/drafts/${draftId}`,
+        payload: { markdown: v1.draft.markdown + '\n\nBuilt with **Next.js**.' },
+      })
+    ).json().draft;
+    expect((await app.inject({ method: 'GET', url: `/api/drafts/${v3.id}` })).json().groundedness.grounded).toBe(
+      true,
+    );
+
     // The grounded version publishes, with images embedded and a valid bundle.
     const okDry = (await app.inject({ method: 'POST', url: `/api/drafts/${draftId}/publish/dry-run` })).json();
     expect(okDry.issues).toEqual([]);
     expect(okDry.bundle.markdown).toContain('![problem.png](./');
     const pub = await app.inject({ method: 'POST', url: `/api/drafts/${draftId}/publish` });
     expect(pub.statusCode).toBe(201);
+  });
+
+  it('retracts legacy publishes that were written under the media dir', () => {
+    const c = ctx(app);
+    c.storage.writeText('legacy-study/index.md', '# old');
+    const legacyPath = c.storage.absolutePath('legacy-study')!;
+    expect(existsSync(legacyPath)).toBe(true);
+    c.publisher.retract({
+      id: 'r1',
+      draftId: 'd1',
+      target: 'filesystem',
+      status: 'published',
+      path: legacyPath,
+      publishedAt: null,
+      unpublishedAt: null,
+      error: null,
+    });
+    expect(existsSync(legacyPath)).toBe(false);
   });
 });

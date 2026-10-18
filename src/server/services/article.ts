@@ -6,7 +6,8 @@ import type { ArticleDraft, Groundedness } from '../../shared/types.js';
 export const MIN_GROUNDEDNESS = 0.5;
 
 const BOLD_REFERENCE = /\*\*([^*\n]+?)\*\*/g;
-const FILENAME_LIKE = /\.[a-z0-9]{2,5}$/i;
+// Only media extensions count as artifact references, so bold names like **Next.js** don't.
+const MEDIA_FILENAME = /\.(png|jpe?g|gif|webp|svg|mp4|webm|mov|mkv|mp3|wav|m4a|ogg|flac)$/i;
 
 /**
  * Groundedness check (AC-GEN-04): drafts reference artifacts as **filename**.
@@ -27,7 +28,7 @@ export function assessGroundedness(db: ScreenStudyDb, draft: ArticleDraft): Grou
   for (const match of draft.markdown.matchAll(BOLD_REFERENCE)) {
     const token = match[1].trim();
     if (names.has(token)) referenced.add(token);
-    else if (FILENAME_LIKE.test(token)) unknown.add(token);
+    else if (MEDIA_FILENAME.test(token)) unknown.add(token);
   }
 
   const issues: string[] = [];

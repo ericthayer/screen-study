@@ -127,8 +127,11 @@ export class FilesystemPublisher implements PublishingAdapter {
   retract(record: PublishRecord): void {
     if (record.status === 'published' && record.path) {
       // record.path is the absolute directory returned by publish(); the slug
-      // (last segment) is the storage key.
-      this.output.deleteDir(path.basename(record.path));
+      // (last segment) is the storage key. Records created before output moved
+      // to PUBLISH_DIR point into the media storage, so retract from there.
+      const slug = path.basename(record.path);
+      const legacy = this.media.absolutePath(slug) === record.path;
+      (legacy ? this.media : this.output).deleteDir(slug);
     }
   }
 }
