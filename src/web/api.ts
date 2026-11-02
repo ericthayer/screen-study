@@ -3,6 +3,7 @@ import type {
   ArticleDraft,
   CaseStudy,
   CaseStudyOutline,
+  Groundedness,
   Insight,
   MediaWithInsight,
   PublishRecord,
@@ -27,7 +28,7 @@ function json<T>(url: string, method: string, body?: unknown): Promise<T> {
 }
 
 export const api = {
-  uploadMedia(files: File[]): Promise<{ items: MediaWithInsight[] }> {
+  uploadMedia(files: File[]): Promise<{ items: MediaWithInsight[]; duplicates: MediaWithInsight[] }> {
     const form = new FormData();
     for (const file of files) form.append('file', file);
     return request('/api/media', { method: 'POST', body: form });
@@ -53,12 +54,16 @@ export const api = {
   unassignMedia: (sectionId: string, mediaId: string) =>
     request<void>(`/api/sections/${sectionId}/media/${mediaId}`, { method: 'DELETE' }),
 
-  generateDraft: (caseStudyId: string) =>
-    json<{ job: AnalysisJob }>(`/api/case-studies/${caseStudyId}/generate`, 'POST'),
+  generateDraft: (caseStudyId: string, acknowledgeReview = false) =>
+    json<{ job: AnalysisJob }>(`/api/case-studies/${caseStudyId}/generate`, 'POST', {
+      acknowledgeReview,
+    }),
   listDrafts: (caseStudyId: string) =>
     request<{ drafts: ArticleDraft[] }>(`/api/case-studies/${caseStudyId}/drafts`),
   getDraft: (id: string) =>
-    request<{ draft: ArticleDraft; publishRecords: PublishRecord[] }>(`/api/drafts/${id}`),
+    request<{ draft: ArticleDraft; publishRecords: PublishRecord[]; groundedness: Groundedness }>(
+      `/api/drafts/${id}`,
+    ),
   updateDraft: (id: string, patch: Partial<Pick<ArticleDraft, 'title' | 'markdown' | 'status'>>) =>
     json<{ draft: ArticleDraft }>(`/api/drafts/${id}`, 'PATCH', patch),
   publishDraft: (id: string) => json<{ record: PublishRecord }>(`/api/drafts/${id}/publish`, 'POST'),

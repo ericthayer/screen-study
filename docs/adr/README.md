@@ -14,7 +14,7 @@ These ADRs were originally drafted as **Proposed** in the PR #2 SDD framework an
 | [ADR-006](0006-authn-authz-approach.md) | AuthN/AuthZ approach | Deferred |
 | [ADR-007](0007-ci-cd-pipeline.md) | CI/CD pipeline (PR gates: lint, typecheck, test, build) | Accepted |
 | [ADR-008](0008-accessibility-compliance-target.md) | Accessibility compliance target (WCAG 2.2 AA) | Deferred |
-| [ADR-009](0009-performance-budgets-observability.md) | Performance budgets and observability standards | Deferred |
+| [ADR-009](0009-performance-budgets-observability.md) | Performance budgets and observability standards | Deferred (correlation IDs + job logs shipped) |
 | [ADR-010](0010-publishing-integration-model.md) | Publishing integration model (static export first, adapter seam) | Accepted (MVP scope) |
 
 ## Conventions

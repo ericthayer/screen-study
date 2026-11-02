@@ -14,6 +14,8 @@ export function OutlinePage({ activeCaseStudyId, onSelectCaseStudy }: Props) {
   const [title, setTitle] = useState('');
   const [weekStart, setWeekStart] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // Polite live region announcing organization changes (AC-ORG-04, NFR-A3).
+  const [status, setStatus] = useState('');
 
   const refreshStudies = useCallback(async () => {
     const { caseStudies } = await api.listCaseStudies();
@@ -51,14 +53,21 @@ export function OutlinePage({ activeCaseStudyId, onSelectCaseStudy }: Props) {
   const unassigned = media.filter((m) => m.status === 'analyzed' && !assignedIds.has(m.id));
   const mediaById = new Map(media.map((m) => [m.id, m]));
 
+  const sectionTitle = (sectionId: string) =>
+    outline?.sections.find((s) => s.id === sectionId)?.title ?? 'section';
+
   const move = async (sectionId: string, mediaId: string) => {
     await api.assignMedia(sectionId, mediaId);
     if (activeCaseStudyId) await refreshOutline(activeCaseStudyId);
+    setStatus(`Added ${mediaById.get(mediaId)?.originalName ?? 'media'} to ${sectionTitle(sectionId)}.`);
   };
 
   const remove = async (sectionId: string, mediaId: string) => {
     await api.unassignMedia(sectionId, mediaId);
     if (activeCaseStudyId) await refreshOutline(activeCaseStudyId);
+    setStatus(
+      `Removed ${mediaById.get(mediaId)?.originalName ?? 'media'} from ${sectionTitle(sectionId)}.`,
+    );
   };
 
   return (
@@ -68,11 +77,17 @@ export function OutlinePage({ activeCaseStudyId, onSelectCaseStudy }: Props) {
         <div className="toolbar" style={{ marginBottom: 0 }}>
           <input
             type="text"
+            aria-label="Case study title"
             placeholder="Title (e.g. Checkout redesign)"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
           />
-          <input type="date" value={weekStart} onChange={(e) => setWeekStart(e.target.value)} />
+          <input
+            type="date"
+            aria-label="Week start"
+            value={weekStart}
+            onChange={(e) => setWeekStart(e.target.value)}
+          />
           <button className="primary" onClick={() => void create()}>
             Create
           </button>
@@ -91,7 +106,14 @@ export function OutlinePage({ activeCaseStudyId, onSelectCaseStudy }: Props) {
         ))}
       </div>
 
-      {error && <p className="error">{error}</p>}
+      <p role="status" aria-live="polite" className="muted">
+        {status}
+      </p>
+      {error && (
+        <p role="alert" className="error">
+          {error}
+        </p>
+      )}
 
       {outline && (
         <>
@@ -101,12 +123,29 @@ export function OutlinePage({ activeCaseStudyId, onSelectCaseStudy }: Props) {
             <button
               className="primary"
               onClick={() =>
-                void api.autoOrganize(outline.id).then(({ outline }) => setOutline(outline))
+                void api.autoOrganize(outline.id).then(({ outline }) => {
+                  setOutline(outline);
+                  setStatus('Auto-organize complete.');
+                })
               }
             >
               Auto-organize
             </button>
           </div>
+
+          {outline.review.needsReview && (
+            <div className="panel">
+              <h3>Needs review</h3>
+              <p className="muted">Drafting this outline will ask for confirmation:</p>
+              <ul>
+                {outline.review.reasons.map((reason, i) => (
+                  <li key={i} className="gap">
+                    {reason}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {outline.gaps.length > 0 && (
             <div className="panel">
@@ -131,7 +170,11 @@ export function OutlinePage({ activeCaseStudyId, onSelectCaseStudy }: Props) {
                   return (
                     <span key={mediaId} className="chip">
                       {item?.originalName ?? mediaId}
-                      <button onClick={() => void remove(section.id, mediaId)} title="Remove">
+                      <button
+                        onClick={() => void remove(section.id, mediaId)}
+                        title="Remove"
+                        aria-label={`Remove ${item?.originalName ?? 'media'} from ${section.title}`}
+                      >
                         ✕
                       </button>
                     </span>
@@ -141,6 +184,7 @@ export function OutlinePage({ activeCaseStudyId, onSelectCaseStudy }: Props) {
               {unassigned.length > 0 && (
                 <div className="row">
                   <select
+                    aria-label={`Add analyzed media to ${section.title}`}
                     defaultValue=""
                     onChange={(e) => {
                       if (e.target.value) void move(section.id, e.target.value);

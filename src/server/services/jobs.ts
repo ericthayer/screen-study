@@ -6,6 +6,15 @@ import { generateDraft } from './article.js';
 
 const BACKOFF_SECONDS = [5, 30, 120];
 
+/** Minimal structured logger (satisfied by Fastify's pino logger). */
+export interface JobLogger {
+  info(obj: Record<string, unknown>, msg: string): void;
+  warn(obj: Record<string, unknown>, msg: string): void;
+  error(obj: Record<string, unknown>, msg: string): void;
+}
+
+const noopLogger: JobLogger = { info() {}, warn() {}, error() {} };
+
 /**
  * DB-polled job runner (ADR-004 minimal form): analysis and draft-generation
  * jobs are rows in `analysis_jobs`; this loop claims due pending jobs with an
@@ -22,11 +31,13 @@ export class JobRunner {
     private ai: AiProvider,
     private storage: StorageService,
     private pollMs: number,
+    private log: JobLogger = noopLogger,
   ) {}
 
   start(): void {
     if (this.timer) return;
     const recovered = this.db.requeueStaleJobs(60);
+    if (recovered > 0) this.log.warn({ recovered }, 'requeued stale jobs on startup');
     this.timer = setInterval(() => void this.tick(), this.pollMs);
     this.timer.unref?.();
     if (recovered > 0) void this.tick();
@@ -65,23 +76,42 @@ export class JobRunner {
     }
   }
 
+  /** Fields attached to every job log line so it joins back to the API request (NFR-O1). */
+  private logFields(job: AnalysisJob): Record<string, unknown> {
+    return {
+      jobId: job.id,
+      kind: job.kind,
+      attempt: job.attempts,
+      maxAttempts: job.maxAttempts,
+      correlationId: job.correlationId,
+      mediaId: job.mediaId,
+      caseStudyId: job.caseStudyId,
+    };
+  }
+
   private async execute(job: AnalysisJob): Promise<void> {
+    const startedAt = Date.now();
+    this.log.info(this.logFields(job), 'job started');
     try {
       if (job.kind === 'analysis') {
         await this.runAnalysis(job);
       } else {
         await this.runDraftGeneration(job);
       }
+      this.log.info({ ...this.logFields(job), durationMs: Date.now() - startedAt }, 'job succeeded');
     } catch (error) {
-      this.fail(job, error instanceof Error ? error.message : String(error));
+      this.fail(job, error instanceof Error ? error.message : String(error), Date.now() - startedAt);
     }
   }
 
-  private fail(job: AnalysisJob, message: string): void {
+  private fail(job: AnalysisJob, message: string, durationMs: number): void {
+    const fields = { ...this.logFields(job), durationMs, error: message };
     if (job.attempts < job.maxAttempts) {
       const backoff = BACKOFF_SECONDS[Math.min(job.attempts - 1, BACKOFF_SECONDS.length - 1)];
       this.db.rescheduleJob(job.id, message, backoff);
+      this.log.warn({ ...fields, retryInSeconds: backoff }, 'job failed; retry scheduled');
     } else {
+      this.log.error(fields, 'job failed permanently');
       this.db.updateAnalysisJob(job.id, 'failed', message);
       if (job.kind === 'analysis' && job.mediaId) {
         this.db.updateMediaStatus(job.mediaId, 'failed');

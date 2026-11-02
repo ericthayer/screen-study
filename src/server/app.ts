@@ -1,5 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import Fastify, { type FastifyInstance } from 'fastify';
 import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
@@ -23,11 +24,26 @@ export interface BuildAppOptions {
   startJobRunner?: boolean;
 }
 
+/** Client-supplied request IDs are honored only if they are short and header-safe. */
+const SAFE_REQUEST_ID = /^[A-Za-z0-9._:-]{1,128}$/;
+
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
   const config = loadConfig(options.configOverrides);
   ensureDataDirs(config);
 
-  const app = Fastify({ logger: process.env.NODE_ENV !== 'test' });
+  // Correlation IDs (NFR-O1): reuse a well-formed incoming `x-request-id`, else
+  // generate one. It is echoed on every response, bound to request logs, and
+  // persisted on enqueued jobs so worker logs join back to the API call.
+  const app = Fastify({
+    logger: process.env.NODE_ENV !== 'test',
+    genReqId: (req) => {
+      const incoming = req.headers['x-request-id'];
+      return typeof incoming === 'string' && SAFE_REQUEST_ID.test(incoming) ? incoming : randomUUID();
+    },
+  });
+  app.addHook('onRequest', async (request, reply) => {
+    reply.header('x-request-id', request.id);
+  });
   const db = new ScreenStudyDb(config.dbPath);
   const ai = createAiProvider(config);
   const storage = new LocalStorageService(config.mediaDir);
@@ -36,8 +52,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     db,
     ai,
     storage,
-    publisher: new FilesystemPublisher(storage),
-    jobs: new JobRunner(db, ai, storage, config.jobPollMs),
+    publisher: new FilesystemPublisher(storage, new LocalStorageService(config.publishDir)),
+    jobs: new JobRunner(db, ai, storage, config.jobPollMs, app.log.child({ component: 'jobs' })),
   };
 
   await app.register(multipart, {
